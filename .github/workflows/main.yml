@@ -1,4 +1,4 @@
-name: Shiraz Telegram Bot 24-7
+name: Telegram Bot 24-7
 
 on:
   schedule:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: telegram-bot-24-7
+  group: bot-24-7
   cancel-in-progress: false
 
 permissions:
@@ -14,7 +14,7 @@ permissions:
   actions: write
 
 jobs:
-  run-bot-24-7:
+  run-bot:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
@@ -26,17 +26,19 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install libraries
+      - name: Install Persian Font & System Libraries
         run: |
-          pip install requests Pillow arabic-reshaper python-bidi jdatetime pytz
+          sudo apt-get update
+          sudo apt-get install -y libraqm0 libfribidi0 libharfbuzz0b fonts-vazirmatn
+          pip install --upgrade Pillow requests jdatetime pytz
 
-      - name: Run 24/7 Interactive Bot
+      - name: Run 24/7 Bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python bot.py
 
-      - name: Save state and auto-restart next cycle
+      - name: Save state and restart next cycle
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
