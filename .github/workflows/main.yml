@@ -1,22 +1,22 @@
-name: Shiraz Telegram Bot
+name: Shiraz Telegram Bot 24-7
 
 on:
   schedule:
-    # اجرای خودکار هر ۵ دقیقه یک‌بار در ۲۴ ساعت شبانه‌روز (و راس ساعت ۷ صبح تهران = ۰۳:۳۰ UTC)
-    - cron: '*/5 * * * *'
+    - cron: '*/30 * * * *'
   workflow_dispatch:
-    inputs:
-      send_test:
-        description: 'ارسال فوری هر ۳ عکس برای تست؟ (true یا false)'
-        required: false
-        default: 'true'
+
+concurrency:
+  group: telegram-bot-24-7
+  cancel-in-progress: false
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
-  run-bot:
+  run-bot-24-7:
     runs-on: ubuntu-latest
+    timeout-minutes: 350
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -30,18 +30,19 @@ jobs:
         run: |
           pip install requests Pillow arabic-reshaper python-bidi jdatetime pytz
 
-      - name: Run Bot
+      - name: Run 24/7 Interactive Bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
-          BRS_MARKET_API_KEY: ${{ secrets.BRS_MARKET_API_KEY }}
-          FORCE_TEST: ${{ github.event.inputs.send_test || 'false' }}
         run: python bot.py
 
-      - name: Save match state to repository
+      - name: Save state and auto-restart next cycle
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add state.json || true
-          git diff --staged --quiet || (git commit -m "Update bot state" && git push)
+          git diff --staged --quiet || (git commit -m "Update state" && git push)
+          gh workflow run main.yml || true
