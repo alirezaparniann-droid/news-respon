@@ -8,34 +8,43 @@ import requests
 import jdatetime
 import pytz
 from PIL import Image, ImageDraw, ImageFont
-import arabic_reshaper
-from bidi.algorithm import get_display
 
 # =====================================================================
-# ۱. تنظیمات اصلی (خواندن خودکار از Secrets گیت‌هاب)
+# ۱. تنظیمات اصلی
 # =====================================================================
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
-TEHRAN_TZ = pytz.timezone("Asia/Tehran")
 
+CITY_NAME_FA = "شیراز"
+CITY_NAME_EN = "Shiraz"
+CITY_LAT = 29.5918
+CITY_LON = 52.5837
+
+TEHRAN_TZ = pytz.timezone("Asia/Tehran")
 STATE_FILE = "state.json"
-FONT_FILE = "Vazirmatn-Bold.ttf"
-FONT_URL = "https://github.com/rastikerdar/vazirmatn/raw/master/fonts/ttf/Vazirmatn-Bold.ttf"
+
+FONT_CANDIDATES = [
+    "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Bold.ttf",
+    "Vazirmatn-Bold.ttf",
+    "font.ttf"
+]
+FONT_URL = "https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/ttf/Vazirmatn-Bold.ttf"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 }
 
-# تعریف ۳ کلید شیشه‌ای (Inline Keyboard) زیر تمام پیام‌ها و عکس‌ها
-GLASS_BUTTONS = json.dumps({
-    "inline_keyboard": [
-        [{"text": "☀️ صبح بخیر (شرعیات، طلا و ارز)", "callback_data": "btn_morning"}],
-        [{"text": "🌤 وضعیت آب و هوا", "callback_data": "btn_weather"}],
-        [{"text": "⚽️ نتایج زنده فوتبال", "callback_data": "btn_football"}]
-    ]
+# منوی ثابت پایین صفحه ربات (بدون چسبیدن به زیر عکس‌ها)
+BOT_MENU_KEYBOARD = json.dumps({
+    "keyboard": [
+        [{"text": "☀️ صبح بخیر"}, {"text": "🌤 وضعیت هوا"}],
+        [{"text": "⚽️ نتایج زنده"}]
+    ],
+    "resize_keyboard": True,
+    "is_persistent": True
 })
 
-# دیکشنری لوگوهای لیگ برتر ایران
+# لوگوهای تیم‌های لیگ برتر ایران
 IRAN_LOGOS = {
     'فجر سپاسی': 'https://raw.githubusercontent.com/LordArma/Iran-Football-Leagues/refs/heads/master/Persian%20Gulf%20Pro%20League/%D9%81%D8%AC%D8%B1%20%D8%B4%D9%87%DB%8C%D8%AF%20%D8%B3%D9%BE%D8%A7%D8%B3%DB%8C.png',
     'فجرسپاسی': 'https://raw.githubusercontent.com/LordArma/Iran-Football-Leagues/refs/heads/master/Persian%20Gulf%20Pro%20League/%D9%81%D8%AC%D8%B1%20%D8%B4%D9%87%DB%8C%D8%AF%20%D8%B3%D9%BE%D8%A7%D8%B3%DB%8C.png',
@@ -83,10 +92,9 @@ TEAM_NAME_MAP = {
     "AC Milan": "میلان", "Juventus": "یوونتوس", "Paris Saint-Germain": "پاری سن ژرمن"
 }
 
-# کش در حافظه رم برای پاسخگویی فوری (زیر ۲ ثانیه) به کلیدهای شیشه‌ای
 CACHE = {
-    "prayers": ("05:00", "06:21", "11:44", "17:24"),
-    "weather": {"temp": 14.0, "temp_int": 14, "max": 19.0, "min": 7.0, "wind": 4, "humidity": 42, "desc": "آسمان صاف"},
+    "prayers": ("05:00", "06:21", "12:04", "17:40"),
+    "weather": {"temp": 15.0, "temp_int": 15, "max": 20.0, "min": 8.0, "wind": 5, "humidity": 40, "desc": "آسمان صاف"},
     "market": ("915,000", "65,400,000", "762,000,000"),
     "featured_match": {
         "league_title": "زنده | لیگ برتر ایران",
@@ -98,34 +106,55 @@ CACHE = {
         "away_logo": IRAN_LOGOS["استقلال"],
         "banner": "گزارش زنده و نتایج بازی‌های امروز"
     },
-    "matches_summary_text": "⚽️ فهرست بازی‌های ثبت‌شده امروز در ۵ لیگ معتبر و لیگ ایران"
+    "matches_summary_text": "⚽️ فهرست بازی‌های ثبت‌شده امروز"
 }
 TEMPLATES_RAM = {}
 LOGO_RAM = {}
 
 
 # =====================================================================
-# ۲. ابزارهای گرافیکی و بارگذاری در RAM برای سرعت فوق‌العاده
+# ۲. فونت فارسی و چاپ راست‌به‌چپ استاندارد (بدون برعکس شدن کلمات)
 # =====================================================================
-def ensure_font():
-    if not os.path.exists(FONT_FILE):
-        try:
-            r = requests.get(FONT_URL, timeout=15)
-            with open(FONT_FILE, "wb") as f:
-                f.write(r.content)
-        except Exception:
-            pass
-
-
 def get_font(size):
-    ensure_font()
-    if os.path.exists(FONT_FILE):
-        return ImageFont.truetype(FONT_FILE, size)
+    for path in FONT_CANDIDATES:
+        if os.path.exists(path) and os.path.getsize(path) > 10000:
+            return ImageFont.truetype(path, size)
+    try:
+        r = requests.get(FONT_URL, timeout=15)
+        if r.status_code == 200 and len(r.content) > 10000:
+            with open("Vazirmatn-Bold.ttf", "wb") as f:
+                f.write(r.content)
+            return ImageFont.truetype("Vazirmatn-Bold.ttf", size)
+    except Exception as e:
+        print("Font download error:", e)
     return ImageFont.load_default()
 
 
+def to_fa_digits(val):
+    en = "0123456789"
+    fa = "۰۱۲۳۴۵۶۷۸۹"
+    res = str(val)
+    for e, f in zip(en, fa):
+        res = res.replace(e, f)
+    return res
+
+
+def draw_rtl_centered(draw, y, text, font, fill, width):
+    """چاپ متن فارسی با موتور اصلی HarfBuzz/Raqm به صورت کاملاً پیوسته و راست‌به‌چپ"""
+    clean_text = to_fa_digits(text)
+    bbox = draw.textbbox((0, 0), clean_text, font=font, direction="rtl", language="fa")
+    w = bbox[2] - bbox[0]
+    draw.text(((width - w) / 2, y), clean_text, font=font, fill=fill, direction="rtl", language="fa")
+
+
+def draw_rtl_at_center_x(draw, center_x, y, text, font, fill):
+    clean_text = to_fa_digits(text)
+    bbox = draw.textbbox((0, 0), clean_text, font=font, direction="rtl", language="fa")
+    w = bbox[2] - bbox[0]
+    draw.text((center_x - w / 2, y), clean_text, font=font, fill=fill, direction="rtl", language="fa")
+
+
 def preload_templates():
-    """بارگذاری قالب‌های گرافیکی در رم در لحظه شروع برای حذف تاخیر دیسک"""
     configs = [
         ("t1", ["1.jpg", "1 (2).jpg", "1.png"], (720, 1280), (18, 60, 50, 255)),
         ("t2", ["2.jpg", "111 (Copy).jfif", "2.png"], (1024, 1820), (30, 24, 50, 255)),
@@ -142,67 +171,57 @@ def preload_templates():
         TEMPLATES_RAM[key] = loaded
 
 
-def to_fa_digits(val):
-    en = "0123456789."
-    fa = "۰۱۲۳۴۵۶۷۸۹/"
-    res = str(val)
-    for e, f in zip(en, fa):
-        res = res.replace(e, f)
-    return res
-
-
-def fa(text):
-    return get_display(arabic_reshaper.reshape(to_fa_digits(text)))
-
-
-def draw_centered(draw, y, text, font, fill, width):
-    processed = fa(text)
-    bbox = draw.textbbox((0, 0), processed, font=font)
-    w = bbox[2] - bbox[0]
-    draw.text(((width - w) / 2, y), processed, font=font, fill=fill)
-
-
 # =====================================================================
-# ۳. توابع ارتباط فوری با تلگرام
+# ۳. ارتباط با تلگرام و ثبت منوی ربات
 # =====================================================================
-def send_telegram_photo(chat_id, img, caption=""):
-    bio = io.BytesIO()
-    img.convert("RGB").save(bio, format="JPEG", quality=92)
-    bio.seek(0)
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+def setup_bot_commands():
+    """ثبت ۳ دستور در دکمه آبی Menu پایین ربات تلگرام"""
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setMyCommands"
+    commands = [
+        {"command": "morning", "description": "☀️ صبح بخیر (شرعیات، طلا و ارز)"},
+        {"command": "weather", "description": "🌤 وضعیت آب و هوا"},
+        {"command": "football", "description": "⚽️ نتایج زنده فوتبال"}
+    ]
     try:
-        requests.post(
-            url,
-            data={"chat_id": chat_id, "caption": caption, "reply_markup": GLASS_BUTTONS},
-            files={"photo": ("report.jpg", bio, "image/jpeg")},
-            timeout=15
-        )
-    except Exception as e:
-        print("Send photo error:", e)
-
-
-def send_menu_message(chat_id, text="👇 لطفاً یکی از گزینه‌های شیشه‌ای زیر را انتخاب کنید تا گزارش تصویری بلافاصله ارسال شود:"):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    try:
-        requests.post(
-            url,
-            data={"chat_id": chat_id, "text": text, "reply_markup": GLASS_BUTTONS},
-            timeout=10
-        )
-    except Exception as e:
-        print("Send message error:", e)
-
-
-def answer_callback(callback_id, text="⚡ در حال ارسال تصویر..."):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery"
-    try:
-        requests.post(url, data={"callback_query_id": callback_id, "text": text}, timeout=5)
+        requests.post(url, json={"commands": commands}, timeout=10)
     except Exception:
         pass
 
 
+def send_telegram_photo(chat_id, img, caption=""):
+    """ارسال عکس تمیز بدون چسباندن کلید شیشه‌ای زیر پست"""
+    if not chat_id:
+        return
+    bio = io.BytesIO()
+    img.convert("RGB").save(bio, format="JPEG", quality=93)
+    bio.seek(0)
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    data = {"chat_id": chat_id, "caption": caption}
+    # اگر چت خصوصی با ربات است، منوی پایین صفحه ربات را فعال نگه دار
+    if not str(chat_id).startswith("@") and not str(chat_id).startswith("-"):
+        data["reply_markup"] = BOT_MENU_KEYBOARD
+    try:
+        requests.post(url, data=data, files={"photo": ("report.jpg", bio, "image/jpeg")}, timeout=15)
+    except Exception as e:
+        print("Send photo error:", e)
+
+
+def send_menu_keyboard(chat_id, text="✅ منوی ربات فعال شد! از دکمه‌های منوی پایین صفحه انتخاب کنید:"):
+    if not chat_id:
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    try:
+        requests.post(
+            url,
+            data={"chat_id": chat_id, "text": text, "reply_markup": BOT_MENU_KEYBOARD},
+            timeout=10
+        )
+    except Exception as e:
+        print("Send menu error:", e)
+
+
 # =====================================================================
-# ۴. ساخت فوری ۳ تصویر از روی اطلاعات کش‌شده در رم (کمتر از ۰.۳ ثانیه)
+# ۴. ساخت فوری ۳ تصویر با فونت فارسی کاملاً پیوسته
 # =====================================================================
 def get_persian_date():
     now = jdatetime.datetime.now(TEHRAN_TZ)
@@ -223,28 +242,33 @@ def build_morning_image():
     overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
 
+    # بازطراحی کادر کرم‌رنگ وسط عکس اول
     draw.rounded_rectangle([46, 128, 674, 976], radius=28, fill=(242, 238, 226, 248), outline=(205, 165, 80, 255), width=3)
 
-    f_title, f_sec, f_date, f_body = get_font(56), get_font(32), get_font(40), get_font(30)
+    # پوشاندن آیدی کانال قبلی در پایین عکس اول
+    draw.rounded_rectangle([175, 1142, 545, 1210], radius=22, fill=(22, 62, 52, 255), outline=(205, 165, 80, 255), width=2)
+    draw_rtl_centered(draw, 1156, "روز خوبی داشته باشید", get_font(28), (245, 225, 170), 720)
+
+    f_title, f_sec, f_date, f_body = get_font(54), get_font(32), get_font(40), get_font(30)
     c_green, c_bronze, c_dark = (12, 55, 42), (148, 92, 38), (22, 38, 38)
 
-    draw_centered(draw, 155, "صبح بخیر شیراز", f_title, c_green, 720)
-    draw_centered(draw, 240, "تقویم و گزارش روزانه", f_sec, c_bronze, 720)
-    draw_centered(draw, 295, full_date, f_date, c_dark, 720)
+    draw_rtl_centered(draw, 155, f"صبح بخیر {CITY_NAME_FA}", f_title, c_green, 720)
+    draw_rtl_centered(draw, 240, "تقویم و گزارش روزانه", f_sec, c_bronze, 720)
+    draw_rtl_centered(draw, 295, full_date, f_date, c_dark, 720)
     draw.line([(190, 368), (530, 368)], fill=(205, 165, 80, 255), width=2)
 
-    draw_centered(draw, 390, "اوقات شرعی به افق شیراز", f_sec, c_bronze, 720)
-    draw_centered(draw, 445, f"اذان صبح {fajr}  |  طلوع آفتاب {sunrise}", f_body, c_dark, 720)
-    draw_centered(draw, 495, f"اذان ظهر {dhuhr}  |  اذان مغرب {maghrib}", f_body, c_dark, 720)
+    draw_rtl_centered(draw, 390, f"اوقات شرعی به افق {CITY_NAME_FA}", f_sec, c_bronze, 720)
+    draw_rtl_centered(draw, 445, f"اذان صبح {fajr} | طلوع آفتاب {sunrise}", f_body, c_dark, 720)
+    draw_rtl_centered(draw, 495, f"اذان ظهر {dhuhr} | اذان مغرب {maghrib}", f_body, c_dark, 720)
 
-    draw_centered(draw, 570, "وضعیت آب و هوا", f_sec, c_bronze, 720)
-    draw_centered(draw, 625, f"دمای فعلی: {w['temp']} درجه", f_body, c_dark, 720)
-    draw_centered(draw, 675, f"بیشینه {w['max']}  |  کمینه {w['min']}", f_body, c_dark, 720)
+    draw_rtl_centered(draw, 570, "وضعیت آب و هوا", f_sec, c_bronze, 720)
+    draw_rtl_centered(draw, 625, f"دمای فعلی: {w['temp']} درجه", f_body, c_dark, 720)
+    draw_rtl_centered(draw, 675, f"بیشینه {w['max']} | کمینه {w['min']}", f_body, c_dark, 720)
 
-    draw_centered(draw, 750, "نبض بازار طلا و ارز", f_sec, c_bronze, 720)
-    draw_centered(draw, 805, f"دلار آزاد: {usd} ریال", f_body, c_dark, 720)
-    draw_centered(draw, 855, f"طلای ۱۸ عیار: {gold} ریال", f_body, c_dark, 720)
-    draw_centered(draw, 905, f"سکه امامی: {coin} ریال", f_body, c_dark, 720)
+    draw_rtl_centered(draw, 750, "نبض بازار طلا و ارز", f_sec, c_bronze, 720)
+    draw_rtl_centered(draw, 805, f"دلار آزاد: {usd} ریال", f_body, c_dark, 720)
+    draw_rtl_centered(draw, 855, f"طلای ۱۸ عیار: {gold} ریال", f_body, c_dark, 720)
+    draw_rtl_centered(draw, 905, f"سکه امامی: {coin} ریال", f_body, c_dark, 720)
 
     return Image.alpha_composite(base, overlay)
 
@@ -257,30 +281,28 @@ def build_weather_image():
     overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
 
-    draw.rounded_rectangle([260, 315, 764, 425], radius=18, fill=(32, 26, 52, 255))
-    draw_centered(draw, 330, short_date, get_font(64), (255, 255, 255), 1024)
+    # جایگزینی تاریخ زیر تیتر طلایی وضعیت آب و هوا
+    draw.rounded_rectangle([250, 315, 774, 425], radius=18, fill=(32, 26, 52, 255))
+    draw_rtl_centered(draw, 330, short_date, get_font(62), (255, 255, 255), 1024)
 
+    # کادر شیشه‌ای دمای فعلی
     draw.rounded_rectangle([98, 518, 595, 1048], radius=36, fill=(92, 88, 114, 248), outline=(212, 182, 115, 255), width=4)
-    temp_str = fa(f"{w['temp_int']} درجه")
-    f_big = get_font(110)
-    tb = draw.textbbox((0, 0), temp_str, font=f_big)
-    draw.text((346 - (tb[2] - tb[0]) / 2, 720), temp_str, font=f_big, fill=(245, 212, 135))
+    draw_rtl_at_center_x(draw, 346, 720, f"{w['temp_int']} درجه", get_font(105), (245, 212, 135))
 
+    # وضعیت آسمان زیر آیکون ماه
     draw.rounded_rectangle([600, 905, 960, 1000], radius=15, fill=(44, 38, 64, 255))
-    desc_str = fa(w["desc"])
-    f_desc = get_font(48)
-    db = draw.textbbox((0, 0), desc_str, font=f_desc)
-    draw.text((780 - (db[2] - db[0]) / 2, 920), desc_str, font=f_desc, fill=(255, 255, 255))
+    draw_rtl_at_center_x(draw, 780, 920, w["desc"], get_font(46), (255, 255, 255))
 
+    # ۳ نوار شیشه‌ای پایین
     bars = [
         (1094, 1212, f"بیشینه روز: {round(w['max'])} درجه / کمینه شب: {round(w['min'])} درجه"),
         (1246, 1364, f"سرعت باد: {w['wind']} کیلومتر بر ساعت"),
         (1396, 1514, f"رطوبت: {w['humidity']} درصد")
     ]
-    f_bar = get_font(46)
+    f_bar = get_font(44)
     for y1, y2, text in bars:
         draw.rounded_rectangle([98, y1, 924, y2], radius=28, fill=(88, 84, 104, 248), outline=(190, 185, 200, 255), width=3)
-        draw_centered(draw, y1 + 26, text, f_bar, (255, 255, 255), 1024)
+        draw_rtl_centered(draw, y1 + 28, text, f_bar, (255, 255, 255), 1024)
 
     return Image.alpha_composite(base, overlay)
 
@@ -317,15 +339,23 @@ def build_match_image(league_title, home_name, away_name, home_goals, away_goals
     overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
 
+    # کادر قرمز بالای تصویر
     draw.rounded_rectangle([230, 174, 794, 278], radius=50, fill=(150, 22, 22, 250), outline=(230, 190, 110, 255), width=5)
-    draw_centered(draw, 195, league_title, get_font(44), (255, 255, 255), 1024)
+    draw_rtl_centered(draw, 195, league_title, get_font(42), (255, 255, 255), 1024)
 
+    # نتیجه بازی در مرکز اسکوربورد
     draw.rounded_rectangle([340, 755, 684, 1005], radius=20, fill=(24, 43, 58, 250))
-    draw_centered(draw, 775, f"{away_goals} - {home_goals}", get_font(125), (242, 205, 120), 1024)
-    draw_centered(draw, 935, f"{home_name}  |  {away_name}", get_font(30), (210, 225, 240), 1024)
+    draw_rtl_centered(draw, 775, f"{away_goals} - {home_goals}", get_font(120), (242, 205, 120), 1024)
+    draw_rtl_centered(draw, 935, f"{home_name} | {away_name}", get_font(30), (210, 225, 240), 1024)
 
+    # کادر مشکی توضیحات گل یا پایان بازی
     draw.rounded_rectangle([108, 1114, 916, 1228], radius=26, fill=(22, 27, 36, 250), outline=(215, 180, 105, 255), width=4)
-    draw_centered(draw, 1142, bottom_banner, get_font(40), (255, 255, 255), 1024)
+    draw_rtl_centered(draw, 1142, bottom_banner, get_font(38), (255, 255, 255), 1024)
+
+    # پوشاندن نوار طلایی پایین عکس سوم
+    draw.rectangle([0, 1695, 1024, 1820], fill=(222, 192, 118, 255))
+    draw.line([(0, 1695), (1024, 1695)], fill=(250, 230, 170, 255), width=4)
+    draw_rtl_centered(draw, 1722, "گزارش زنده و نتایج فوتبال", get_font(48), (20, 20, 20), 1024)
 
     combined = Image.alpha_composite(base, overlay)
     left_circle = fetch_logo_circle(away_name, away_logo, 154)
@@ -336,7 +366,7 @@ def build_match_image(league_title, home_name, away_name, home_goals, away_goals
 
 
 # =====================================================================
-# ۵. بروزرسانی خودکار اطلاعات در پس‌زمینه + ارسال خودکار ۷ صبح و گل‌ها
+# ۵. بروزرسانی خودکار اطلاعات در پس‌زمینه
 # =====================================================================
 def load_state():
     if os.path.exists(STATE_FILE):
@@ -345,7 +375,7 @@ def load_state():
                 return json.load(f)
         except Exception:
             pass
-    return {"last_morning_date": "", "matches": {}}
+    return {"last_morning_date": "", "owner_chat_id": "", "matches": {}}
 
 
 def save_state(state):
@@ -356,19 +386,21 @@ def save_state(state):
         pass
 
 
+def get_target_chat_id(state):
+    return TELEGRAM_CHAT_ID or state.get("owner_chat_id", "")
+
+
 def refresh_daily_data_cache():
-    # اوقات شرعی شیراز
     try:
-        url = "http://api.aladhan.com/v1/timingsByCity?city=Shiraz&country=Iran&method=7"
+        url = f"http://api.aladhan.com/v1/timingsByCity?city={CITY_NAME_EN}&country=Iran&method=7"
         t = requests.get(url, timeout=8).json()["data"]["timings"]
         CACHE["prayers"] = (t["Fajr"][:5], t["Sunrise"][:5], t["Dhuhr"][:5], t["Maghrib"][:5])
     except Exception:
         pass
 
-    # آب و هوای شیراز
     try:
         url = (
-            "https://api.open-meteo.com/v1/forecast?latitude=29.5918&longitude=52.5837"
+            f"https://api.open-meteo.com/v1/forecast?latitude={CITY_LAT}&longitude={CITY_LON}"
             "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
             "&daily=temperature_2m_max,temperature_2m_min&timezone=Asia%2FTehran"
         )
@@ -391,7 +423,6 @@ def refresh_daily_data_cache():
     except Exception:
         pass
 
-    # قیمت طلا، سکه و دلار
     try:
         html = requests.get("https://www.tgju.org/", headers=HEADERS, timeout=10).text
         def extract_price(slug):
@@ -405,8 +436,7 @@ def refresh_daily_data_cache():
         pass
 
 
-def process_match_event(matches_mem, match_id, league_fa, is_iran, h_name, a_name, h_g, a_g, h_logo, a_logo, is_live, is_finished, minute_str=""):
-    # ذخیره آخرین بازی معتبر برای دکمه شیشه‌ای نتایج زنده
+def process_match_event(state, matches_mem, match_id, league_fa, is_iran, h_name, a_name, h_g, a_g, h_logo, a_logo, is_live, is_finished, minute_str=""):
     status_label = f"زنده (دقیقه {minute_str})" if is_live else ("پایان بازی" if is_finished else "برنامه بازی امروز")
     CACHE["featured_match"] = {
         "league_title": f"{'زنده' if is_live else 'گزارش'} | {league_fa}",
@@ -424,21 +454,22 @@ def process_match_event(matches_mem, match_id, league_fa, is_iran, h_name, a_nam
         return
 
     prev = matches_mem[match_id]
+    target_chat = get_target_chat_id(state)
 
     if is_iran and is_live and (h_g > prev["h"] or a_g > prev["a"]):
         scorer = h_name if h_g > prev["h"] else a_name
         min_txt = f"در دقیقه {minute_str}" if minute_str else ""
         banner = f"انفجار در ورزشگاه! گل برای {scorer} {min_txt}".strip()
-        if TELEGRAM_CHAT_ID:
+        if target_chat:
             img = build_match_image(f"زنده | {league_fa}", h_name, a_name, h_g, a_g, h_logo, a_logo, banner)
-            send_telegram_photo(TELEGRAM_CHAT_ID, img, f"⚽️ گل برای {scorer}!\n{h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}")
+            send_telegram_photo(target_chat, img, f"⚽️ گل برای {scorer}!\n{h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}")
         prev["h"], prev["a"] = h_g, a_g
 
     if is_finished and not prev["ft"]:
         banner = f"پایان بازی | {h_name} {h_g} - {a_g} {a_name}"
-        if TELEGRAM_CHAT_ID:
+        if target_chat:
             img = build_match_image(f"نتیجه نهایی | {league_fa}", h_name, a_name, h_g, a_g, h_logo, a_logo, banner)
-            send_telegram_photo(TELEGRAM_CHAT_ID, img, f"🏁 پایان بازی ({league_fa})\n{h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}")
+            send_telegram_photo(target_chat, img, f"🏁 پایان بازی ({league_fa})\n{h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}")
         prev["ft"] = True
         prev["h"], prev["a"] = h_g, a_g
 
@@ -447,7 +478,6 @@ def check_all_football_free(state):
     matches_mem = state.setdefault("matches", {})
     summary_lines = ["⚽️ نتایج زنده و بازی‌های امروز:\n"]
 
-    # ۱. لیگ برتر ایران و جام حذفی
     try:
         today_compact = jdatetime.datetime.now(TEHRAN_TZ).togregorian().strftime("%Y%m%d")
         f_url = f"https://www.fotmob.com/api/matches?date={today_compact}"
@@ -473,11 +503,10 @@ def check_all_football_free(state):
 
                 icon = "🔴" if is_live else ("🏁" if is_finished else "🕒")
                 summary_lines.append(f"{icon} {h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}")
-                process_match_event(matches_mem, mid, l_fa, True, h_name, a_name, h_g, a_g, h_logo, a_logo, is_live, is_finished, minute_str)
+                process_match_event(state, matches_mem, mid, l_fa, True, h_name, a_name, h_g, a_g, h_logo, a_logo, is_live, is_finished, minute_str)
     except Exception:
         pass
 
-    # ۲. لیگ‌های معتبر اروپایی (انگلیس، اسپانیا، آلمان، قهرمانان اروپا)
     espn_leagues = {
         "eng.1": "لیگ برتر انگلیس",
         "esp.1": "لالیگا اسپانیا",
@@ -508,7 +537,7 @@ def check_all_football_free(state):
 
                 icon = "🔴" if is_live else ("🏁" if is_finished else "🕒")
                 summary_lines.append(f"{icon} {h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}")
-                process_match_event(matches_mem, mid, l_fa, False, h_name, a_name, h_g, a_g, h_logo, a_logo, is_live, is_finished, minute_str)
+                process_match_event(state, matches_mem, mid, l_fa, False, h_name, a_name, h_g, a_g, h_logo, a_logo, is_live, is_finished, minute_str)
         except Exception:
             pass
 
@@ -519,7 +548,6 @@ def check_all_football_free(state):
 
 
 def background_worker(state):
-    """بروزرسانی دائمی کش در پس‌زمینه و ارسال خودکار راس ساعت ۷ صبح"""
     while True:
         try:
             refresh_daily_data_cache()
@@ -527,11 +555,11 @@ def background_worker(state):
 
             now_tehran = jdatetime.datetime.now(TEHRAN_TZ)
             today_gregorian = now_tehran.togregorian().strftime("%Y-%m-%d")
+            target_chat = get_target_chat_id(state)
 
-            # ارسال خودکار راس ساعت ۷ صبح به وقت تهران
-            if now_tehran.hour == 7 and state.get("last_morning_date") != today_gregorian and TELEGRAM_CHAT_ID:
-                send_telegram_photo(TELEGRAM_CHAT_ID, build_morning_image(), "☀️ صبح بخیر شیراز | تقویم، اوقات شرعی و نبض بازار امروز")
-                send_telegram_photo(TELEGRAM_CHAT_ID, build_weather_image(), "🌤 وضعیت آب و هوای امروز شیراز")
+            if now_tehran.hour == 7 and state.get("last_morning_date") != today_gregorian and target_chat:
+                send_telegram_photo(target_chat, build_morning_image(), "☀️ صبح بخیر | تقویم، اوقات شرعی و نبض بازار امروز")
+                send_telegram_photo(target_chat, build_weather_image(), "🌤 وضعیت آب و هوای امروز")
                 state["last_morning_date"] = today_gregorian
 
             save_state(state)
@@ -541,64 +569,56 @@ def background_worker(state):
 
 
 # =====================================================================
-# ۶. حلقه اصلی شنود لحظه‌ای کلیدهای شیشه‌ای تلگرام (پاسخگویی زیر ۳ ثانیه)
+# ۶. پاسخگویی فوری (کمتر از ۳ ثانیه) به دکمه‌های منوی ربات
 # =====================================================================
-def handle_button_click(chat_id, data):
-    if data == "btn_morning":
+def handle_user_request(chat_id, text):
+    t = text.strip()
+    if "صبح بخیر" in t or t == "/morning":
         img = build_morning_image()
-        send_telegram_photo(chat_id, img, "☀️ صبح بخیر شیراز | تقویم، اوقات شرعی و نبض بازار لحظه‌ای")
-    elif data == "btn_weather":
+        send_telegram_photo(chat_id, img, "☀️ صبح بخیر | تقویم، اوقات شرعی و نبض بازار لحظه‌ای")
+    elif "وضعیت هوا" in t or "آب و هوا" in t or t == "/weather":
         img = build_weather_image()
-        send_telegram_photo(chat_id, img, "🌤 وضعیت لحظه‌ای آب و هوای شیراز")
-    elif data == "btn_football":
+        send_telegram_photo(chat_id, img, "🌤 وضعیت لحظه‌ای آب و هوا")
+    elif "نتایج زنده" in t or "فوتبال" in t or t == "/football":
         fm = CACHE["featured_match"]
         img = build_match_image(
             fm["league_title"], fm["home_name"], fm["away_name"],
             fm["home_goals"], fm["away_goals"], fm["home_logo"], fm["away_logo"], fm["banner"]
         )
         send_telegram_photo(chat_id, img, CACHE["matches_summary_text"])
+    else:
+        send_menu_keyboard(chat_id, "👇 لطفاً یکی از ۳ کلید موجود در منوی پایین صفحه را انتخاب کنید:")
 
 
 if __name__ == "__main__":
-    print("🚀 در حال بارگذاری قالب‌ها و فونت در حافظه رم...")
     preload_templates()
-    ensure_font()
+    setup_bot_commands()
     state = load_state()
 
-    # بارگذاری اولیه کش
     refresh_daily_data_cache()
     check_all_football_free(state)
 
-    # ارسال منوی شیشه‌ای اولیه به محض روشن شدن
-    if TELEGRAM_CHAT_ID:
-        send_menu_message(TELEGRAM_CHAT_ID, "✅ ربات ۲۴ ساعته فعال شد! هر زمان روی یکی از ۳ کلید شیشه‌ای زیر بزنید، گزارش تصویری در کمتر از ۳ ثانیه ارسال می‌شود:")
+    target = get_target_chat_id(state)
+    if target:
+        send_menu_keyboard(target)
 
-    # شروع ترد پس‌زمینه برای ساعت ۷ صبح و رصد زنده فوتبال
     bg_thread = threading.Thread(target=background_worker, args=(state,), daemon=True)
     bg_thread.start()
 
-    # شنود لحظه‌ای کلیک روی دکمه‌های شیشه‌ای به مدت ۵.۵ ساعت در هر چرخه گیت‌هاب
     start_ts = time.time()
     offset = 0
-    while time.time() - start_ts < 19500:  # ۵ ساعت و ۲۵ دقیقه
+    while time.time() - start_ts < 19500:
         try:
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
             res = requests.get(url, params={"offset": offset, "timeout": 25}, timeout=30).json()
             for upd in res.get("result", []):
                 offset = upd["update_id"] + 1
-
-                # ۱) اگر کاربر پیام متنی مثل /start فرستاد، ۳ کلید شیشه‌ای را نشان بده
                 if "message" in upd and "text" in upd["message"]:
                     cid = upd["message"]["chat"]["id"]
-                    send_menu_message(cid)
-
-                # ۲) اگر کاربر روی یکی از ۳ کلید شیشه‌ای زد، زیر ۳ ثانیه عکس را بفرست
-                elif "callback_query" in upd:
-                    cb = upd["callback_query"]
-                    cb_id = cb["id"]
-                    cid = cb["message"]["chat"]["id"]
-                    data = cb.get("data", "")
-                    answer_callback(cb_id)
-                    threading.Thread(target=handle_button_click, args=(cid, data), daemon=True).start()
-        except Exception as e:
+                    txt = upd["message"]["text"]
+                    if not state.get("owner_chat_id"):
+                        state["owner_chat_id"] = cid
+                        save_state(state)
+                    threading.Thread(target=handle_user_request, args=(cid, txt), daemon=True).start()
+        except Exception:
             time.sleep(2)
