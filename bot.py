@@ -34,7 +34,7 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 }
 
-# منوی ثابت پایین صفحه ربات (بدون چسبیدن به زیر عکس‌ها)
+# منوی ثابت پایین صفحه ربات (۳ کلید اصلی)
 BOT_MENU_KEYBOARD = json.dumps({
     "keyboard": [
         [{"text": "☀️ صبح بخیر"}, {"text": "🌤 وضعیت هوا"}],
@@ -73,39 +73,84 @@ IRAN_LOGOS = {
     'سایپا': 'https://raw.githubusercontent.com/LordArma/Iran-Football-Leagues/main/Logos/Saipa.png',
 }
 
+# دیکشنری جامع فارسی‌ساز تمام تیم‌های ایران و اروپا
 TEAM_NAME_MAP = {
+    # ایران
     "Persepolis": "پرسپولیس", "Esteghlal": "استقلال", "Sepahan": "سپاهان",
-    "Tractor": "تراکتور", "Tractor Sazi": "تراکتور", "Foolad": "فولاد",
-    "Zob Ahan": "ذوب آهن", "Malavan": "ملوان", "Gol Gohar": "گل گهر",
-    "Aluminium Arak": "آلومینیوم", "Shams Azar Qazvin": "شمس آذر",
-    "Chadormalu": "چادرملو", "Kheybar Khorramabad": "خیبر",
+    "Tractor": "تراکتور", "Tractor Sazi": "تراکتور", "Foolad": "فولاد", "Foolad Khuzestan": "فولاد",
+    "Zob Ahan": "ذوب آهن", "Malavan": "ملوان", "Gol Gohar": "گل گهر", "Gol Gohar Sirjan": "گل گهر",
+    "Aluminium Arak": "آلومینیوم", "Shams Azar Qazvin": "شمس آذر", "Shams Azar": "شمس آذر",
+    "Chadormalu": "چادرملو", "Chadormalu Ardakan": "چادرملو", "Kheybar Khorramabad": "خیبر",
     "Nassaji Mazandaran": "نساجی", "Havadar": "هوادار", "Paykan": "پیکان",
-    "Sanat Naft": "صنعت نفت", "Saipa": "سایپا", "Fajr Sepasi": "فجر سپاسی",
-    "Esteghlal Khuzestan": "استقلال خوزستان", "Mes Shahr-e Babak": "مس شهر بابک",
+    "Sanat Naft": "صنعت نفت", "Sanat Naft Abadan": "صنعت نفت", "Saipa": "سایپا",
+    "Fajr Sepasi": "فجر سپاسی", "Esteghlal Khuzestan": "استقلال خوزستان",
+    "Mes Shahr-e Babak": "مس شهر بابک", "Mes Rafsanjan": "مس رفسنجان", "Mes Kerman": "مس کرمان",
+    # لیگ برتر انگلیس
     "Arsenal": "آرسنال", "Liverpool": "لیورپول", "Manchester City": "منچسترسیتی",
     "Manchester United": "منچستریونایتد", "Chelsea": "چلسی", "Tottenham Hotspur": "تاتنهام",
     "Newcastle United": "نیوکاسل", "Aston Villa": "استون ویلا",
+    "Brighton & Hove Albion": "برایتون", "Brighton": "برایتون",
+    "Brentford": "برنتفورد", "Crystal Palace": "کریستال پالاس",
+    "Ipswich Town": "ایپسویچ تاون", "AFC Bournemouth": "بورنموث", "Bournemouth": "بورنموث",
+    "Sunderland": "ساندرلند", "Everton": "اورتون", "Fulham": "فولام",
+    "West Ham United": "وستهام", "Wolverhampton Wanderers": "ولورهمپتون",
+    "Nottingham Forest": "ناتینگهام فارست", "Leicester City": "لسترسیتی",
+    "Southampton": "ساوتهمپتون", "Leeds United": "لیدز یونایتد", "Burnley": "برنلی",
+    "Sheffield United": "شفیلد یونایتد", "West Bromwich Albion": "وست برومویچ",
+    # لالیگا اسپانیا
     "Real Madrid": "رئال مادرید", "Barcelona": "بارسلونا", "Atlético Madrid": "اتلتیکو مادرید",
-    "Girona": "خیرونا", "Athletic Club": "اتلتیک بیلبائو", "Real Sociedad": "رئال سوسیداد",
+    "Atletico Madrid": "اتلتیکو مادرید", "Girona": "خیرونا", "Athletic Club": "اتلتیک بیلبائو",
+    "Athletic Bilbao": "اتلتیک بیلبائو", "Real Sociedad": "رئال سوسیداد",
+    "Real Betis": "رئال بتیس", "Villarreal": "ویارئال", "Valencia": "والنسیا",
+    "Sevilla": "سویا", "Osasuna": "اوساسونا", "Celta Vigo": "سلتاویگو",
+    "Rayo Vallecano": "رایو وایکانو", "Mallorca": "مایورکا", "RCD Mallorca": "مایورکا",
+    "Getafe": "ختافه", "Alavés": "آلاوس", "Deportivo Alavés": "آلاوس",
+    "Las Palmas": "لاس پالماس", "Leganés": "لگانس", "CD Leganés": "لگانس",
+    "Espanyol": "اسپانیول", "RCD Espanyol": "اسپانیول", "Real Valladolid": "وایادولید",
+    "Elche": "الچه", "Levante": "لوانته", "Real Oviedo": "رئال اوویدو",
+    # بوندسلیگا آلمان
     "Bayern Munich": "بایرن مونیخ", "Bayer Leverkusen": "لورکوزن", "Borussia Dortmund": "دورتموند",
-    "RB Leipzig": "لایپزیگ", "Stuttgart": "اشتوتگارت", "Inter Milan": "اینتر میلان",
-    "AC Milan": "میلان", "Juventus": "یوونتوس", "Paris Saint-Germain": "پاری سن ژرمن"
+    "RB Leipzig": "لایپزیگ", "VfB Stuttgart": "اشتوتگارت", "Stuttgart": "اشتوتگارت",
+    "Eintracht Frankfurt": "آینتراخت فرانکفورت", "TSG Hoffenheim": "هوفنهایم", "Hoffenheim": "هوفنهایم",
+    "SC Freiburg": "فرایبورگ", "Freiburg": "فرایبورگ", "1. FC Heidenheim 1846": "هایدنهایم",
+    "Heidenheim": "هایدنهایم", "Werder Bremen": "وردربرمن", "Borussia Mönchengladbach": "مونشن‌گلادباخ",
+    "Borussia Monchengladbach": "مونشن‌گلادباخ", "1. FC Union Berlin": "یونیون برلین",
+    "Union Berlin": "یونیون برلین", "VfL Wolfsburg": "وولفسبورگ", "Wolfsburg": "وولفسبورگ",
+    "FC Augsburg": "آگزبورگ", "Augsburg": "آگزبورگ", "1. FSV Mainz 05": "ماینتس", "Mainz": "ماینتس",
+    "VfL Bochum 1848": "بوخوم", "Bochum": "بوخوم", "FC St. Pauli": "سن پائولی",
+    "Holstein Kiel": "هولشتاین کیل", "FC Cologne": "کلن", "1. FC Köln": "کلن",
+    "Schalke 04": "شالکه", "FC Schalke 04": "شالکه", "Hamburger SV": "هامبورگ",
+    # لیگ قهرمانان اروپا و سایر تیم‌های اروپایی
+    "Inter Milan": "اینتر میلان", "Internazionale": "اینتر میلان", "AC Milan": "میلان",
+    "Juventus": "یوونتوس", "Napoli": "ناپولی", "Atalanta": "آتالانتا", "AS Roma": "آاس رم",
+    "Roma": "آاس رم", "Lazio": "لاتزیو", "Bologna": "بولونیا", "Fiorentina": "فیورنتینا",
+    "Como": "کومو", "Torino": "تورینو", "Udinese": "اودینزه", "Genoa": "جنوا",
+    "Paris Saint-Germain": "پاری سن ژرمن", "Monaco": "موناکو", "AS Monaco": "موناکو",
+    "Marseille": "مارسی", "Olympique Marseille": "مارسی", "Lille": "لیل", "LOSC Lille": "لیل",
+    "Lyon": "لیون", "Olympique Lyonnais": "لیون", "Nice": "نیس", "OGC Nice": "نیس",
+    "Lens": "لانس", "RC Lens": "لانس", "Brest": "برست", "Stade Brestois": "برست",
+    "FC Porto": "پورتو", "Porto": "پورتو", "Benfica": "بنفیکا", "SL Benfica": "بنفیکا",
+    "Sporting CP": "اسپورتینگ لیسبون", "Ajax": "آژاکس", "PSV Eindhoven": "آیندهوون",
+    "Feyenoord": "فاینورد", "Celtic": "سلتیک", "Rangers": "رنجرز",
+    "Fenerbahce": "فنرباغچه", "Fenerbahçe": "فنرباغچه", "Galatasaray": "گالاتاسرای",
+    "Besiktas": "بشیکتاش", "Beşiktaş": "بشیکتاش", "AEK Athens": "آاک آتن",
+    "Olympiacos": "المپیاکوس", "Panathinaikos": "پاناتینایکوس", "PAOK": "پائوک",
+    "Club Brugge": "کلوب بروژ", "Red Bull Salzburg": "سالزبورگ", "RB Salzburg": "سالزبورگ",
+    "Shakhtar Donetsk": "شاختار دونتسک", "Dinamo Zagreb": "دینامو زاگرب",
+    "Sparta Prague": "اسپارتا پراگ", "Slovan Bratislava": "اسلوان براتیسلاوا",
+    "Young Boys": "یانگ بویز", "Crvena Zvezda": "ستاره سرخ بلگراد", "Red Star Belgrade": "ستاره سرخ بلگراد",
+    "Sturm Graz": "اشتورم گراتس", "Bodo/Glimt": "بودو گلیمت", "Bodø/Glimt": "بودو گلیمت",
+    "Anderlecht": "آندرلخت", "Twente": "توئنته", "AZ Alkmaar": "آلکمار"
 }
+
+TRANSLATE_RAM = {}
 
 CACHE = {
     "prayers": ("05:00", "06:21", "12:04", "17:40"),
     "weather": {"temp": 15.0, "temp_int": 15, "max": 20.0, "min": 8.0, "wind": 5, "humidity": 40, "desc": "آسمان صاف"},
     "market": ("915,000", "65,400,000", "762,000,000"),
-    "featured_match": {
-        "league_title": "زنده | لیگ برتر ایران",
-        "home_name": "پرسپولیس",
-        "away_name": "استقلال",
-        "home_goals": 1,
-        "away_goals": 2,
-        "home_logo": IRAN_LOGOS["پرسپولیس"],
-        "away_logo": IRAN_LOGOS["استقلال"],
-        "banner": "گزارش زنده و نتایج بازی‌های امروز"
-    },
+    "matches_by_id": {},
+    "matches_order": [],
     "matches_summary_text": "⚽️ فهرست بازی‌های ثبت‌شده امروز"
 }
 TEMPLATES_RAM = {}
@@ -113,8 +158,39 @@ LOGO_RAM = {}
 
 
 # =====================================================================
-# ۲. فونت فارسی و چاپ راست‌به‌چپ استاندارد (بدون برعکس شدن کلمات)
+# ۲. مترجم خودکار فارسی برای تیم‌های جدید + فونت فارسی
 # =====================================================================
+def to_persian_team(raw_name):
+    """تبدیل ۱۰۰٪ نام هر تیم به فارسی (از دیکشنری یا ترجمه خودکار گوگل)"""
+    if not raw_name:
+        return ""
+    clean = raw_name.strip()
+    if clean in TEAM_NAME_MAP:
+        return TEAM_NAME_MAP[clean]
+    if clean in TRANSLATE_RAM:
+        return TRANSLATE_RAM[clean]
+
+    # اگر از قبل فارسی است، همان را برگردان
+    if re.search(r'[\u0600-\u06FF]', clean):
+        return clean
+
+    # حذف پیشوندهای اضافی انگلیسی قبل از ترجمه خودکار
+    simplified = re.sub(r'\b(FC|AFC|SC|TSG|1\.\s*FC|RCD|CD|VfB|VfL|SV|RB|AS|AC|SL|RC)\b', '', clean).strip()
+    if simplified in TEAM_NAME_MAP:
+        TRANSLATE_RAM[clean] = TEAM_NAME_MAP[simplified]
+        return TEAM_NAME_MAP[simplified]
+
+    try:
+        url = "https://translate.googleapis.com/translate_a/single"
+        params = {"client": "gtx", "sl": "en", "tl": "fa", "dt": "t", "q": simplified or clean}
+        r = requests.get(url, params=params, timeout=4).json()
+        fa_name = r[0][0][0].strip()
+        TRANSLATE_RAM[clean] = fa_name
+        return fa_name
+    except Exception:
+        return simplified or clean
+
+
 def get_font(size):
     for path in FONT_CANDIDATES:
         if os.path.exists(path) and os.path.getsize(path) > 10000:
@@ -125,8 +201,8 @@ def get_font(size):
             with open("Vazirmatn-Bold.ttf", "wb") as f:
                 f.write(r.content)
             return ImageFont.truetype("Vazirmatn-Bold.ttf", size)
-    except Exception as e:
-        print("Font download error:", e)
+    except Exception:
+        pass
     return ImageFont.load_default()
 
 
@@ -140,7 +216,6 @@ def to_fa_digits(val):
 
 
 def draw_rtl_centered(draw, y, text, font, fill, width):
-    """چاپ متن فارسی با موتور اصلی HarfBuzz/Raqm به صورت کاملاً پیوسته و راست‌به‌چپ"""
     clean_text = to_fa_digits(text)
     bbox = draw.textbbox((0, 0), clean_text, font=font, direction="rtl", language="fa")
     w = bbox[2] - bbox[0]
@@ -172,15 +247,14 @@ def preload_templates():
 
 
 # =====================================================================
-# ۳. ارتباط با تلگرام و ثبت منوی ربات
+# ۳. ارتباط با تلگرام و دکمه‌های تبدیل هر بازی به عکس
 # =====================================================================
 def setup_bot_commands():
-    """ثبت ۳ دستور در دکمه آبی Menu پایین ربات تلگرام"""
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setMyCommands"
     commands = [
         {"command": "morning", "description": "☀️ صبح بخیر (شرعیات، طلا و ارز)"},
         {"command": "weather", "description": "🌤 وضعیت آب و هوا"},
-        {"command": "football", "description": "⚽️ نتایج زنده فوتبال"}
+        {"command": "football", "description": "⚽️ نتایج زنده و ساخت عکس بازی‌ها"}
     ]
     try:
         requests.post(url, json={"commands": commands}, timeout=10)
@@ -189,7 +263,6 @@ def setup_bot_commands():
 
 
 def send_telegram_photo(chat_id, img, caption=""):
-    """ارسال عکس تمیز بدون چسباندن کلید شیشه‌ای زیر پست"""
     if not chat_id:
         return
     bio = io.BytesIO()
@@ -197,7 +270,6 @@ def send_telegram_photo(chat_id, img, caption=""):
     bio.seek(0)
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     data = {"chat_id": chat_id, "caption": caption}
-    # اگر چت خصوصی با ربات است، منوی پایین صفحه ربات را فعال نگه دار
     if not str(chat_id).startswith("@") and not str(chat_id).startswith("-"):
         data["reply_markup"] = BOT_MENU_KEYBOARD
     try:
@@ -206,7 +278,7 @@ def send_telegram_photo(chat_id, img, caption=""):
         print("Send photo error:", e)
 
 
-def send_menu_keyboard(chat_id, text="✅ منوی ربات فعال شد! از دکمه‌های منوی پایین صفحه انتخاب کنید:"):
+def send_menu_keyboard(chat_id, text="✅ منوی ربات آماده است! از دکمه‌های پایین صفحه انتخاب کنید:"):
     if not chat_id:
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -216,12 +288,44 @@ def send_menu_keyboard(chat_id, text="✅ منوی ربات فعال شد! از 
             data={"chat_id": chat_id, "text": text, "reply_markup": BOT_MENU_KEYBOARD},
             timeout=10
         )
+    except Exception:
+        pass
+
+
+def send_football_report_with_photo_buttons(chat_id):
+    """ارسال گزارش کاملاً فارسی بازی‌ها + دکمه تبدیل به عکس کنار هر بازی"""
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    buttons = []
+    for mid in CACHE["matches_order"][:25]:
+        m = CACHE["matches_by_id"].get(mid)
+        if not m:
+            continue
+        btn_label = f"📸 عکس: {m['h_name']} {to_fa_digits(m['h_g'])} - {to_fa_digits(m['a_g'])} {m['a_name']}"
+        buttons.append([{"text": btn_label, "callback_data": f"mkimg_{mid}"}])
+
+    text = CACHE["matches_summary_text"] + "\n\n👇 روی هر بازی که می‌خواهید بزنید تا بلافاصله عکس آن ساخته و ارسال شود:"
+    payload = {"chat_id": chat_id, "text": text}
+    if buttons:
+        payload["reply_markup"] = json.dumps({"inline_keyboard": buttons})
+    else:
+        payload["reply_markup"] = BOT_MENU_KEYBOARD
+
+    try:
+        requests.post(url, data=payload, timeout=10)
     except Exception as e:
-        print("Send menu error:", e)
+        print("Send report error:", e)
+
+
+def answer_callback(callback_id, text="🎨 در حال ساخت و ارسال عکس بازی..."):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery"
+    try:
+        requests.post(url, data={"callback_query_id": callback_id, "text": text}, timeout=5)
+    except Exception:
+        pass
 
 
 # =====================================================================
-# ۴. ساخت فوری ۳ تصویر با فونت فارسی کاملاً پیوسته
+# ۴. ساخت فوری ۳ تصویر گرافیکی
 # =====================================================================
 def get_persian_date():
     now = jdatetime.datetime.now(TEHRAN_TZ)
@@ -242,10 +346,7 @@ def build_morning_image():
     overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
 
-    # بازطراحی کادر کرم‌رنگ وسط عکس اول
     draw.rounded_rectangle([46, 128, 674, 976], radius=28, fill=(242, 238, 226, 248), outline=(205, 165, 80, 255), width=3)
-
-    # پوشاندن آیدی کانال قبلی در پایین عکس اول
     draw.rounded_rectangle([175, 1142, 545, 1210], radius=22, fill=(22, 62, 52, 255), outline=(205, 165, 80, 255), width=2)
     draw_rtl_centered(draw, 1156, "روز خوبی داشته باشید", get_font(28), (245, 225, 170), 720)
 
@@ -281,19 +382,15 @@ def build_weather_image():
     overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
 
-    # جایگزینی تاریخ زیر تیتر طلایی وضعیت آب و هوا
     draw.rounded_rectangle([250, 315, 774, 425], radius=18, fill=(32, 26, 52, 255))
     draw_rtl_centered(draw, 330, short_date, get_font(62), (255, 255, 255), 1024)
 
-    # کادر شیشه‌ای دمای فعلی
     draw.rounded_rectangle([98, 518, 595, 1048], radius=36, fill=(92, 88, 114, 248), outline=(212, 182, 115, 255), width=4)
     draw_rtl_at_center_x(draw, 346, 720, f"{w['temp_int']} درجه", get_font(105), (245, 212, 135))
 
-    # وضعیت آسمان زیر آیکون ماه
     draw.rounded_rectangle([600, 905, 960, 1000], radius=15, fill=(44, 38, 64, 255))
     draw_rtl_at_center_x(draw, 780, 920, w["desc"], get_font(46), (255, 255, 255))
 
-    # ۳ نوار شیشه‌ای پایین
     bars = [
         (1094, 1212, f"بیشینه روز: {round(w['max'])} درجه / کمینه شب: {round(w['min'])} درجه"),
         (1246, 1364, f"سرعت باد: {w['wind']} کیلومتر بر ساعت"),
@@ -339,20 +436,16 @@ def build_match_image(league_title, home_name, away_name, home_goals, away_goals
     overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
 
-    # کادر قرمز بالای تصویر
     draw.rounded_rectangle([230, 174, 794, 278], radius=50, fill=(150, 22, 22, 250), outline=(230, 190, 110, 255), width=5)
     draw_rtl_centered(draw, 195, league_title, get_font(42), (255, 255, 255), 1024)
 
-    # نتیجه بازی در مرکز اسکوربورد
     draw.rounded_rectangle([340, 755, 684, 1005], radius=20, fill=(24, 43, 58, 250))
     draw_rtl_centered(draw, 775, f"{away_goals} - {home_goals}", get_font(120), (242, 205, 120), 1024)
     draw_rtl_centered(draw, 935, f"{home_name} | {away_name}", get_font(30), (210, 225, 240), 1024)
 
-    # کادر مشکی توضیحات گل یا پایان بازی
     draw.rounded_rectangle([108, 1114, 916, 1228], radius=26, fill=(22, 27, 36, 250), outline=(215, 180, 105, 255), width=4)
     draw_rtl_centered(draw, 1142, bottom_banner, get_font(38), (255, 255, 255), 1024)
 
-    # پوشاندن نوار طلایی پایین عکس سوم
     draw.rectangle([0, 1695, 1024, 1820], fill=(222, 192, 118, 255))
     draw.line([(0, 1695), (1024, 1695)], fill=(250, 230, 170, 255), width=4)
     draw_rtl_centered(draw, 1722, "گزارش زنده و نتایج فوتبال", get_font(48), (20, 20, 20), 1024)
@@ -366,7 +459,7 @@ def build_match_image(league_title, home_name, away_name, home_goals, away_goals
 
 
 # =====================================================================
-# ۵. بروزرسانی خودکار اطلاعات در پس‌زمینه
+# ۵. بروزرسانی خودکار اطلاعات و ثبت تمام بازی‌ها برای ساخت عکس انتخابی
 # =====================================================================
 def load_state():
     if os.path.exists(STATE_FILE):
@@ -437,17 +530,19 @@ def refresh_daily_data_cache():
 
 
 def process_match_event(state, matches_mem, match_id, league_fa, is_iran, h_name, a_name, h_g, a_g, h_logo, a_logo, is_live, is_finished, minute_str=""):
-    status_label = f"زنده (دقیقه {minute_str})" if is_live else ("پایان بازی" if is_finished else "برنامه بازی امروز")
-    CACHE["featured_match"] = {
-        "league_title": f"{'زنده' if is_live else 'گزارش'} | {league_fa}",
-        "home_name": h_name,
-        "away_name": a_name,
-        "home_goals": h_g,
-        "away_goals": a_g,
-        "home_logo": h_logo,
-        "away_logo": a_logo,
+    status_label = f"زنده (دقیقه {minute_str})" if is_live else ("پایان بازی" if is_finished else "برنامه بازی")
+    CACHE["matches_by_id"][match_id] = {
+        "league_title": f"{'زنده' if is_live else 'نتیجه نهایی' if is_finished else 'گزارش'} | {league_fa}",
+        "league_fa": league_fa,
+        "h_name": h_name,
+        "a_name": a_name,
+        "h_g": h_g,
+        "a_g": a_g,
+        "h_logo": h_logo,
+        "a_logo": a_logo,
         "banner": f"{status_label} | {h_name} {h_g} - {a_g} {a_name}"
     }
+    CACHE["matches_order"].append(match_id)
 
     if match_id not in matches_mem:
         matches_mem[match_id] = {"h": h_g, "a": a_g, "ft": is_finished}
@@ -476,8 +571,10 @@ def process_match_event(state, matches_mem, match_id, league_fa, is_iran, h_name
 
 def check_all_football_free(state):
     matches_mem = state.setdefault("matches", {})
-    summary_lines = ["⚽️ نتایج زنده و بازی‌های امروز:\n"]
+    summary_lines = ["⚽️ نتایج زنده و بازی‌های امروز:"]
+    CACHE["matches_order"] = []
 
+    # ۱. لیگ برتر ایران و جام حذفی
     try:
         today_compact = jdatetime.datetime.now(TEHRAN_TZ).togregorian().strftime("%Y%m%d")
         f_url = f"https://www.fotmob.com/api/matches?date={today_compact}"
@@ -487,7 +584,7 @@ def check_all_football_free(state):
             if lid not in (9090, 9384):
                 continue
             l_fa = "لیگ برتر ایران" if lid == 9090 else "جام حذفی ایران"
-            summary_lines.append(f"🏆 {l_fa}:")
+            summary_lines.append(f"\n🏆 {l_fa}:")
             for m in lg.get("matches", []):
                 mid = f"ir_{m['id']}"
                 st = m.get("status", {})
@@ -495,8 +592,8 @@ def check_all_football_free(state):
                 is_finished = st.get("finished", False)
                 minute_str = st.get("liveTime", {}).get("short", "").replace("'", "")
 
-                h_raw, a_raw = m["home"]["name"], m["away"]["name"]
-                h_name, a_name = TEAM_NAME_MAP.get(h_raw, h_raw), TEAM_NAME_MAP.get(a_raw, a_raw)
+                h_name = to_persian_team(m["home"]["name"])
+                a_name = to_persian_team(m["away"]["name"])
                 h_g, a_g = int(m["home"].get("score", 0) or 0), int(m["away"].get("score", 0) or 0)
                 h_logo = f"https://images.fotmob.com/image_resources/logo/teamlogo/{m['home']['id']}.png"
                 a_logo = f"https://images.fotmob.com/image_resources/logo/teamlogo/{m['away']['id']}.png"
@@ -507,6 +604,7 @@ def check_all_football_free(state):
     except Exception:
         pass
 
+    # ۲. لیگ‌های معتبر اروپایی
     espn_leagues = {
         "eng.1": "لیگ برتر انگلیس",
         "esp.1": "لالیگا اسپانیا",
@@ -519,8 +617,8 @@ def check_all_football_free(state):
             events = requests.get(url, headers=HEADERS, timeout=10).json().get("events", [])
             if events:
                 summary_lines.append(f"\n🏆 {l_fa}:")
-            for ev in events[:5]:
-                mid = f"espn_{ev['id']}"
+            for ev in events[:6]:
+                mid = f"eu_{ev['id']}"
                 comp = ev["competitions"][0]
                 state_type = ev["status"]["type"]["state"]
                 is_live = (state_type == "in")
@@ -530,8 +628,8 @@ def check_all_football_free(state):
                 home = next(c for c in comp["competitors"] if c["homeAway"] == "home")
                 away = next(c for c in comp["competitors"] if c["homeAway"] == "away")
 
-                h_raw, a_raw = home["team"]["displayName"], away["team"]["displayName"]
-                h_name, a_name = TEAM_NAME_MAP.get(h_raw, h_raw), TEAM_NAME_MAP.get(a_raw, a_raw)
+                h_name = to_persian_team(home["team"]["displayName"])
+                a_name = to_persian_team(away["team"]["displayName"])
                 h_g, a_g = int(home.get("score", 0) or 0), int(away.get("score", 0) or 0)
                 h_logo, a_logo = home["team"].get("logo", ""), away["team"].get("logo", "")
 
@@ -542,9 +640,23 @@ def check_all_football_free(state):
             pass
 
     if len(summary_lines) > 1:
-        CACHE["matches_summary_text"] = "\n".join(summary_lines)[:950]
+        CACHE["matches_summary_text"] = "\n".join(summary_lines)[:3500]
     else:
-        CACHE["matches_summary_text"] = "⚽️ در حال حاضر بازی زنده‌ای در جریان نیست؛ آخرین وضعیت ثبت‌شده روی تصویر نمایش داده شده است."
+        # اگر هیچ بازی زنده‌ای در جدول نبود، یک بازی نمونه در لیست قرار بده
+        sample_id = "ir_sample"
+        CACHE["matches_by_id"][sample_id] = {
+            "league_title": "زنده | لیگ برتر ایران",
+            "league_fa": "لیگ برتر ایران",
+            "h_name": "پرسپولیس",
+            "a_name": "استقلال",
+            "h_g": 1,
+            "a_g": 2,
+            "h_logo": IRAN_LOGOS["پرسپولیس"],
+            "a_logo": IRAN_LOGOS["استقلال"],
+            "banner": "گزارش زنده | پرسپولیس ۱ - ۲ استقلال"
+        }
+        CACHE["matches_order"] = [sample_id]
+        CACHE["matches_summary_text"] = "⚽️ در حال حاضر بازی فعالی در جدول امروز ثبت نشده است."
 
 
 def background_worker(state):
@@ -569,7 +681,7 @@ def background_worker(state):
 
 
 # =====================================================================
-# ۶. پاسخگویی فوری (کمتر از ۳ ثانیه) به دکمه‌های منوی ربات
+# ۶. پاسخگویی فوری به منوی ربات و ساخت عکس برای هر بازی انتخابی
 # =====================================================================
 def handle_user_request(chat_id, text):
     t = text.strip()
@@ -580,14 +692,22 @@ def handle_user_request(chat_id, text):
         img = build_weather_image()
         send_telegram_photo(chat_id, img, "🌤 وضعیت لحظه‌ای آب و هوا")
     elif "نتایج زنده" in t or "فوتبال" in t or t == "/football":
-        fm = CACHE["featured_match"]
-        img = build_match_image(
-            fm["league_title"], fm["home_name"], fm["away_name"],
-            fm["home_goals"], fm["away_goals"], fm["home_logo"], fm["away_logo"], fm["banner"]
-        )
-        send_telegram_photo(chat_id, img, CACHE["matches_summary_text"])
+        send_football_report_with_photo_buttons(chat_id)
     else:
         send_menu_keyboard(chat_id, "👇 لطفاً یکی از ۳ کلید موجود در منوی پایین صفحه را انتخاب کنید:")
+
+
+def handle_match_photo_callback(chat_id, data):
+    if data.startswith("mkimg_"):
+        mid = data.replace("mkimg_", "", 1)
+        m = CACHE["matches_by_id"].get(mid)
+        if m:
+            img = build_match_image(
+                m["league_title"], m["h_name"], m["a_name"],
+                m["h_g"], m["a_g"], m["h_logo"], m["a_logo"], m["banner"]
+            )
+            caption = f"🏁 {m['league_fa']}\n⚽️ {m['h_name']} {to_fa_digits(m['h_g'])} - {to_fa_digits(m['a_g'])} {m['a_name']}"
+            send_telegram_photo(chat_id, img, caption)
 
 
 if __name__ == "__main__":
@@ -613,6 +733,8 @@ if __name__ == "__main__":
             res = requests.get(url, params={"offset": offset, "timeout": 25}, timeout=30).json()
             for upd in res.get("result", []):
                 offset = upd["update_id"] + 1
+
+                # ۱. دریافت پیام از ۳ دکمه منوی پایین ربات
                 if "message" in upd and "text" in upd["message"]:
                     cid = upd["message"]["chat"]["id"]
                     txt = upd["message"]["text"]
@@ -620,5 +742,14 @@ if __name__ == "__main__":
                         state["owner_chat_id"] = cid
                         save_state(state)
                     threading.Thread(target=handle_user_request, args=(cid, txt), daemon=True).start()
+
+                # ۲. دریافت کلیک روی دکمه «📸 عکس: ...» برای هر بازی خاص
+                elif "callback_query" in upd:
+                    cb = upd["callback_query"]
+                    cb_id = cb["id"]
+                    cid = cb["message"]["chat"]["id"]
+                    data = cb.get("data", "")
+                    answer_callback(cb_id)
+                    threading.Thread(target=handle_match_photo_callback, args=(cid, data), daemon=True).start()
         except Exception:
             time.sleep(2)
