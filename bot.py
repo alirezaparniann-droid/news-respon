@@ -7,6 +7,7 @@ import threading
 import requests
 import jdatetime
 import pytz
+from datetime import timedelta
 from PIL import Image, ImageDraw, ImageFont
 
 # =====================================================================
@@ -31,7 +32,8 @@ FONT_CANDIDATES = [
 FONT_URL = "https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/ttf/Vazirmatn-Bold.ttf"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Cache-Control": "no-cache"
 }
 
 # منوی ثابت پایین صفحه ربات (۳ کلید اصلی)
@@ -43,6 +45,15 @@ BOT_MENU_KEYBOARD = json.dumps({
     "resize_keyboard": True,
     "is_persistent": True
 })
+
+# دسته‌بندی ۵ گانه لیگ‌ها برای منوی انتخاب لیگ
+LEAGUE_CATEGORIES = [
+    ("lg_ir",  "🇮🇷 لیگ برتر و جام حذفی ایران"),
+    ("lg_eng", "🏴󠁧󠁢󠁥󠁮󠁧󠁿 لیگ برتر انگلیس"),
+    ("lg_esp", "🇪🇸 لالیگا اسپانیا"),
+    ("lg_ger", "🇩🇪 بوندسلیگا آلمان"),
+    ("lg_ucl", "🏆 لیگ قهرمانان اروپا")
+]
 
 # لوگوهای تیم‌های لیگ برتر ایران
 IRAN_LOGOS = {
@@ -73,7 +84,7 @@ IRAN_LOGOS = {
     'سایپا': 'https://raw.githubusercontent.com/LordArma/Iran-Football-Leagues/main/Logos/Saipa.png',
 }
 
-# دیکشنری جامع فارسی‌ساز تمام تیم‌های ایران و اروپا
+# دیکشنری جامع فارسی‌ساز تیم‌های ایران و اروپا
 TEAM_NAME_MAP = {
     # ایران
     "Persepolis": "پرسپولیس", "Esteghlal": "استقلال", "Sepahan": "سپاهان",
@@ -85,7 +96,7 @@ TEAM_NAME_MAP = {
     "Sanat Naft": "صنعت نفت", "Sanat Naft Abadan": "صنعت نفت", "Saipa": "سایپا",
     "Fajr Sepasi": "فجر سپاسی", "Esteghlal Khuzestan": "استقلال خوزستان",
     "Mes Shahr-e Babak": "مس شهر بابک", "Mes Rafsanjan": "مس رفسنجان", "Mes Kerman": "مس کرمان",
-    # لیگ برتر انگلیس
+    # انگلیس
     "Arsenal": "آرسنال", "Liverpool": "لیورپول", "Manchester City": "منچسترسیتی",
     "Manchester United": "منچستریونایتد", "Chelsea": "چلسی", "Tottenham Hotspur": "تاتنهام",
     "Newcastle United": "نیوکاسل", "Aston Villa": "استون ویلا",
@@ -97,7 +108,7 @@ TEAM_NAME_MAP = {
     "Nottingham Forest": "ناتینگهام فارست", "Leicester City": "لسترسیتی",
     "Southampton": "ساوتهمپتون", "Leeds United": "لیدز یونایتد", "Burnley": "برنلی",
     "Sheffield United": "شفیلد یونایتد", "West Bromwich Albion": "وست برومویچ",
-    # لالیگا اسپانیا
+    # اسپانیا
     "Real Madrid": "رئال مادرید", "Barcelona": "بارسلونا", "Atlético Madrid": "اتلتیکو مادرید",
     "Atletico Madrid": "اتلتیکو مادرید", "Girona": "خیرونا", "Athletic Club": "اتلتیک بیلبائو",
     "Athletic Bilbao": "اتلتیک بیلبائو", "Real Sociedad": "رئال سوسیداد",
@@ -108,7 +119,7 @@ TEAM_NAME_MAP = {
     "Las Palmas": "لاس پالماس", "Leganés": "لگانس", "CD Leganés": "لگانس",
     "Espanyol": "اسپانیول", "RCD Espanyol": "اسپانیول", "Real Valladolid": "وایادولید",
     "Elche": "الچه", "Levante": "لوانته", "Real Oviedo": "رئال اوویدو",
-    # بوندسلیگا آلمان
+    # آلمان
     "Bayern Munich": "بایرن مونیخ", "Bayer Leverkusen": "لورکوزن", "Borussia Dortmund": "دورتموند",
     "RB Leipzig": "لایپزیگ", "VfB Stuttgart": "اشتوتگارت", "Stuttgart": "اشتوتگارت",
     "Eintracht Frankfurt": "آینتراخت فرانکفورت", "TSG Hoffenheim": "هوفنهایم", "Hoffenheim": "هوفنهایم",
@@ -120,7 +131,7 @@ TEAM_NAME_MAP = {
     "VfL Bochum 1848": "بوخوم", "Bochum": "بوخوم", "FC St. Pauli": "سن پائولی",
     "Holstein Kiel": "هولشتاین کیل", "FC Cologne": "کلن", "1. FC Köln": "کلن",
     "Schalke 04": "شالکه", "FC Schalke 04": "شالکه", "Hamburger SV": "هامبورگ",
-    # لیگ قهرمانان اروپا و سایر تیم‌های اروپایی
+    # لیگ قهرمانان اروپا
     "Inter Milan": "اینتر میلان", "Internazionale": "اینتر میلان", "AC Milan": "میلان",
     "Juventus": "یوونتوس", "Napoli": "ناپولی", "Atalanta": "آتالانتا", "AS Roma": "آاس رم",
     "Roma": "آاس رم", "Lazio": "لاتزیو", "Bologna": "بولونیا", "Fiorentina": "فیورنتینا",
@@ -148,20 +159,24 @@ TRANSLATE_RAM = {}
 CACHE = {
     "prayers": ("05:00", "06:21", "12:04", "17:40"),
     "weather": {"temp": 15.0, "temp_int": 15, "max": 20.0, "min": 8.0, "wind": 5, "humidity": 40, "desc": "آسمان صاف"},
-    "market": ("915,000", "65,400,000", "762,000,000"),
+    "market": ("در حال بروزرسانی", "در حال بروزرسانی", "در حال بروزرسانی"),
     "matches_by_id": {},
-    "matches_order": [],
-    "matches_summary_text": "⚽️ فهرست بازی‌های ثبت‌شده امروز"
+    "leagues": {
+        "lg_ir":  {"title": "🇮🇷 لیگ برتر و جام حذفی ایران", "lines": [], "match_ids": [], "has_live": False},
+        "lg_eng": {"title": "🏴󠁧󠁢󠁥󠁮󠁧󠁿 لیگ برتر انگلیس", "lines": [], "match_ids": [], "has_live": False},
+        "lg_esp": {"title": "🇪🇸 لالیگا اسپانیا", "lines": [], "match_ids": [], "has_live": False},
+        "lg_ger": {"title": "🇩🇪 بوندسلیگا آلمان", "lines": [], "match_ids": [], "has_live": False},
+        "lg_ucl": {"title": "🏆 لیگ قهرمانان اروپا", "lines": [], "match_ids": [], "has_live": False},
+    }
 }
 TEMPLATES_RAM = {}
 LOGO_RAM = {}
 
 
 # =====================================================================
-# ۲. مترجم خودکار فارسی برای تیم‌های جدید + فونت فارسی
+# ۲. مترجم خودکار فارسی + ابزارهای فونت و تاریخ
 # =====================================================================
 def to_persian_team(raw_name):
-    """تبدیل ۱۰۰٪ نام هر تیم به فارسی (از دیکشنری یا ترجمه خودکار گوگل)"""
     if not raw_name:
         return ""
     clean = raw_name.strip()
@@ -169,12 +184,9 @@ def to_persian_team(raw_name):
         return TEAM_NAME_MAP[clean]
     if clean in TRANSLATE_RAM:
         return TRANSLATE_RAM[clean]
-
-    # اگر از قبل فارسی است، همان را برگردان
     if re.search(r'[\u0600-\u06FF]', clean):
         return clean
 
-    # حذف پیشوندهای اضافی انگلیسی قبل از ترجمه خودکار
     simplified = re.sub(r'\b(FC|AFC|SC|TSG|1\.\s*FC|RCD|CD|VfB|VfL|SV|RB|AS|AC|SL|RC)\b', '', clean).strip()
     if simplified in TEAM_NAME_MAP:
         TRANSLATE_RAM[clean] = TEAM_NAME_MAP[simplified]
@@ -247,14 +259,14 @@ def preload_templates():
 
 
 # =====================================================================
-# ۳. ارتباط با تلگرام و دکمه‌های تبدیل هر بازی به عکس
+# ۳. ارتباط با تلگرام و منوی دسته‌بندی لیگ‌ها
 # =====================================================================
 def setup_bot_commands():
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setMyCommands"
     commands = [
         {"command": "morning", "description": "☀️ صبح بخیر (شرعیات، طلا و ارز)"},
         {"command": "weather", "description": "🌤 وضعیت آب و هوا"},
-        {"command": "football", "description": "⚽️ نتایج زنده و ساخت عکس بازی‌ها"}
+        {"command": "football", "description": "⚽️ نتایج زنده (انتخاب لیگ)"}
     ]
     try:
         requests.post(url, json={"commands": commands}, timeout=10)
@@ -292,31 +304,87 @@ def send_menu_keyboard(chat_id, text="✅ منوی ربات آماده است! �
         pass
 
 
-def send_football_report_with_photo_buttons(chat_id):
-    """ارسال گزارش کاملاً فارسی بازی‌ها + دکمه تبدیل به عکس کنار هر بازی"""
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+def build_league_selector_markup():
+    """ساخت دکمه‌های دسته‌بندی لیگ‌ها برای سوال «کدوم لیگ مد نظرته؟»"""
     buttons = []
-    for mid in CACHE["matches_order"][:25]:
+    for lg_key, lg_title in LEAGUE_CATEGORIES:
+        lg_info = CACHE["leagues"].get(lg_key, {})
+        count = len(lg_info.get("match_ids", []))
+        live_badge = " 🔴 (زنده)" if lg_info.get("has_live") else ""
+        count_txt = f" ({to_fa_digits(count)} بازی)" if count > 0 else ""
+        btn_text = f"{lg_title}{live_badge}{count_txt}"
+        buttons.append([{"text": btn_text, "callback_data": f"showlg_{lg_key}"}])
+    return json.dumps({"inline_keyboard": buttons})
+
+
+def send_league_selection_question(chat_id, message_id=None):
+    """پرسیدن سوال «کدوم لیگ مد نظرته؟» به همراه لیست لیگ‌ها"""
+    text = (
+        "⚽️ کدوم لیگ مد نظرته؟\n\n"
+        "لطفاً یکی از لیگ‌های زیر را انتخاب کنید تا بازی‌های زنده (🔴)، "
+        "پایان‌یافته (🏁) و در انتظار شروع (⏳) همان لیگ نمایش داده شود:"
+    )
+    markup = build_league_selector_markup()
+    if message_id:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageText"
+        payload = {"chat_id": chat_id, "message_id": message_id, "text": text, "reply_markup": markup}
+    else:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {"chat_id": chat_id, "text": text, "reply_markup": markup}
+    try:
+        requests.post(url, data=payload, timeout=10)
+    except Exception as e:
+        print("Send league selector error:", e)
+
+
+def send_specific_league_matches(chat_id, lg_key, message_id=None):
+    """نمایش بازی‌های لیگ انتخاب‌شده با ایموجی وضعیت + دکمه تبدیل هر بازی به عکس"""
+    lg_info = CACHE["leagues"].get(lg_key)
+    if not lg_info:
+        return
+
+    title = lg_info["title"]
+    lines = lg_info["lines"]
+    m_ids = lg_info["match_ids"]
+
+    if lines:
+        matches_text = "\n".join(lines)
+        legend = "\n\nراهنما: 🔴 در حال برگزاری (زنده) | 🏁 پایان بازی | ⏳ در انتظار شروع"
+        text = (
+            f"🏆 گزارش بازی‌های {title}:\n\n"
+            f"{matches_text}"
+            f"{legend}\n"
+            "👇 روی هر بازی که می‌خواهید بزنید تا بلافاصله عکس آن ساخته و ارسال شود:"
+        )
+    else:
+        text = f"🏆 {title}\n\n⚽️ در حال حاضر بازی فعالی برای این لیگ ثبت نشده است."
+
+    buttons = []
+    for mid in m_ids[:20]:
         m = CACHE["matches_by_id"].get(mid)
         if not m:
             continue
-        btn_label = f"📸 عکس: {m['h_name']} {to_fa_digits(m['h_g'])} - {to_fa_digits(m['a_g'])} {m['a_name']}"
+        btn_label = f"📸 {m['status_emoji']} {m['h_name']} {to_fa_digits(m['h_g'])} - {to_fa_digits(m['a_g'])} {m['a_name']}"
         buttons.append([{"text": btn_label, "callback_data": f"mkimg_{mid}"}])
 
-    text = CACHE["matches_summary_text"] + "\n\n👇 روی هر بازی که می‌خواهید بزنید تا بلافاصله عکس آن ساخته و ارسال شود:"
-    payload = {"chat_id": chat_id, "text": text}
-    if buttons:
-        payload["reply_markup"] = json.dumps({"inline_keyboard": buttons})
+    # دکمه بازگشت به لیست لیگ‌ها
+    buttons.append([{"text": "🔙 بازگشت به انتخاب لیگ‌ها", "callback_data": "back_leagues"}])
+    markup = json.dumps({"inline_keyboard": buttons})
+
+    if message_id:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageText"
+        payload = {"chat_id": chat_id, "message_id": message_id, "text": text, "reply_markup": markup}
     else:
-        payload["reply_markup"] = BOT_MENU_KEYBOARD
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {"chat_id": chat_id, "text": text, "reply_markup": markup}
 
     try:
         requests.post(url, data=payload, timeout=10)
     except Exception as e:
-        print("Send report error:", e)
+        print("Send league matches error:", e)
 
 
-def answer_callback(callback_id, text="🎨 در حال ساخت و ارسال عکس بازی..."):
+def answer_callback(callback_id, text=""):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery"
     try:
         requests.post(url, data={"callback_query_id": callback_id, "text": text}, timeout=5)
@@ -459,7 +527,7 @@ def build_match_image(league_title, home_name, away_name, home_goals, away_goals
 
 
 # =====================================================================
-# ۵. بروزرسانی خودکار اطلاعات و ثبت تمام بازی‌ها برای ساخت عکس انتخابی
+# ۵. بروزرسانی لحظه‌ای اطلاعات و دسته‌بندی بازی‌ها بر اساس لیگ
 # =====================================================================
 def load_state():
     if os.path.exists(STATE_FILE):
@@ -484,25 +552,37 @@ def get_target_chat_id(state):
 
 
 def refresh_daily_data_cache():
+    now_greg = jdatetime.datetime.now(TEHRAN_TZ).togregorian()
+    date_ddmmyyyy = now_greg.strftime("%d-%m-%Y")
+
+    # ۱. اوقات شرعی دقیق روز جاری
     try:
-        url = f"http://api.aladhan.com/v1/timingsByCity?city={CITY_NAME_EN}&country=Iran&method=7"
-        t = requests.get(url, timeout=8).json()["data"]["timings"]
-        CACHE["prayers"] = (t["Fajr"][:5], t["Sunrise"][:5], t["Dhuhr"][:5], t["Maghrib"][:5])
+        url = f"https://api.aladhan.com/v1/timingsByCity/{date_ddmmyyyy}?city={CITY_NAME_EN}&country=Iran&method=7"
+        t = requests.get(url, headers=HEADERS, timeout=8).json()["data"]["timings"]
+        clean_time = lambda s: re.sub(r"\s*\(.*?\)", "", s).strip()[:5]
+        CACHE["prayers"] = (
+            clean_time(t["Fajr"]),
+            clean_time(t["Sunrise"]),
+            clean_time(t["Dhuhr"]),
+            clean_time(t["Maghrib"])
+        )
     except Exception:
         pass
 
+    # ۲. وضعیت آب و هوای لحظه‌ای
     try:
         url = (
             f"https://api.open-meteo.com/v1/forecast?latitude={CITY_LAT}&longitude={CITY_LON}"
             "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
             "&daily=temperature_2m_max,temperature_2m_min&timezone=Asia%2FTehran"
         )
-        d = requests.get(url, timeout=8).json()
+        d = requests.get(url, headers=HEADERS, timeout=8).json()
         cur, daily = d["current"], d["daily"]
         code = cur.get("weather_code", 0)
         desc_map = {
             0: "آسمان صاف", 1: "غالباً صاف", 2: "نیمه‌ابری", 3: "ابری",
-            45: "مه‌آلود", 61: "بارش خفیف باران", 63: "بارانی", 71: "برفی", 95: "رعد و برق"
+            45: "مه‌آلود", 48: "مه‌آلود", 51: "نم‌نم باران", 61: "بارش خفیف باران",
+            63: "بارانی", 65: "بارش شدید باران", 71: "بارش برف", 80: "رگبار باران", 95: "رعد و برق"
         }
         CACHE["weather"] = {
             "temp": round(cur["temperature_2m"], 1),
@@ -516,12 +596,30 @@ def refresh_daily_data_cache():
     except Exception:
         pass
 
+    # ۳. قیمت زنده دلار، طلا و سکه (ریال)
     try:
-        html = requests.get("https://www.tgju.org/", headers=HEADERS, timeout=10).text
+        ts = int(time.time())
+        r_json = requests.get(f"https://call1.tgju.org/ajax.json?rev={ts}", headers=HEADERS, timeout=8).json()
+        cur_m = r_json.get("current", {})
+        usd = cur_m.get("price_dollar_rl", {}).get("p")
+        gold = cur_m.get("geram18", {}).get("p")
+        coin = cur_m.get("sekee", {}).get("p")
+        if usd and gold and coin:
+            CACHE["market"] = (usd, gold, coin)
+            return
+    except Exception:
+        pass
+
+    try:
+        html = requests.get(f"https://www.tgju.org/?t={int(time.time())}", headers=HEADERS, timeout=10).text
         def extract_price(slug):
-            pattern = rf'data-market-row="{slug}"[^>]*>.*?<td class="nf"[^>]*>([\d,]+)</td>'
-            m = re.search(pattern, html, re.DOTALL)
-            return m.group(1) if m else None
+            p1 = rf'data-market-row="{slug}"[^>]*data-price="([\d,]+)"'
+            m1 = re.search(p1, html)
+            if m1:
+                return m1.group(1)
+            p2 = rf'data-market-row="{slug}"[^>]*>.*?<td class="nf"[^>]*>([\d,]+)</td>'
+            m2 = re.search(p2, html, re.DOTALL)
+            return m2.group(1) if m2 else None
         usd, gold, coin = extract_price("price_dollar_rl"), extract_price("geram18"), extract_price("sekee")
         if usd and gold and coin:
             CACHE["market"] = (usd, gold, coin)
@@ -529,10 +627,28 @@ def refresh_daily_data_cache():
         pass
 
 
-def process_match_event(state, matches_mem, match_id, league_fa, is_iran, h_name, a_name, h_g, a_g, h_logo, a_logo, is_live, is_finished, minute_str=""):
-    status_label = f"زنده (دقیقه {minute_str})" if is_live else ("پایان بازی" if is_finished else "برنامه بازی")
+def register_and_check_match(state, matches_mem, lg_key, match_id, league_fa, is_iran, h_name, a_name, h_g, a_g, h_logo, a_logo, is_live, is_finished, minute_str="", allow_auto_alert=True):
+    if is_live:
+        status_emoji = "🔴"
+        status_label = f"زنده (دقیقه {to_fa_digits(minute_str)})" if minute_str else "زنده"
+        header_prefix = "زنده"
+        line_str = f"🔴 زنده ({to_fa_digits(minute_str)}') | {h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}" if minute_str else f"🔴 زنده | {h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}"
+        CACHE["leagues"][lg_key]["has_live"] = True
+    elif is_finished:
+        status_emoji = "🏁"
+        status_label = "پایان بازی"
+        header_prefix = "نتیجه نهایی"
+        line_str = f"🏁 پایان | {h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}"
+    else:
+        status_emoji = "⏳"
+        status_label = f"در انتظار شروع ({to_fa_digits(minute_str)})" if minute_str else "در انتظار شروع"
+        header_prefix = "برنامه بازی"
+        line_str = f"⏳ {to_fa_digits(minute_str)} | {h_name} - {a_name}" if minute_str else f"⏳ در انتظار شروع | {h_name} - {a_name}"
+
     CACHE["matches_by_id"][match_id] = {
-        "league_title": f"{'زنده' if is_live else 'نتیجه نهایی' if is_finished else 'گزارش'} | {league_fa}",
+        "status_emoji": status_emoji,
+        "status_label": status_label,
+        "league_title": f"{header_prefix} | {league_fa}",
         "league_fa": league_fa,
         "h_name": h_name,
         "a_name": a_name,
@@ -542,7 +658,11 @@ def process_match_event(state, matches_mem, match_id, league_fa, is_iran, h_name
         "a_logo": a_logo,
         "banner": f"{status_label} | {h_name} {h_g} - {a_g} {a_name}"
     }
-    CACHE["matches_order"].append(match_id)
+    CACHE["leagues"][lg_key]["lines"].append(line_str)
+    CACHE["leagues"][lg_key]["match_ids"].append(match_id)
+
+    if not allow_auto_alert:
+        return
 
     if match_id not in matches_mem:
         matches_mem[match_id] = {"h": h_g, "a": a_g, "ft": is_finished}
@@ -551,15 +671,17 @@ def process_match_event(state, matches_mem, match_id, league_fa, is_iran, h_name
     prev = matches_mem[match_id]
     target_chat = get_target_chat_id(state)
 
+    # ارسال خودکار عکس برای هر گل در لیگ برتر و جام حذفی ایران
     if is_iran and is_live and (h_g > prev["h"] or a_g > prev["a"]):
         scorer = h_name if h_g > prev["h"] else a_name
         min_txt = f"در دقیقه {minute_str}" if minute_str else ""
         banner = f"انفجار در ورزشگاه! گل برای {scorer} {min_txt}".strip()
         if target_chat:
             img = build_match_image(f"زنده | {league_fa}", h_name, a_name, h_g, a_g, h_logo, a_logo, banner)
-            send_telegram_photo(target_chat, img, f"⚽️ گل برای {scorer}!\n{h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}")
+            send_telegram_photo(target_chat, img, f"🔴 گل برای {scorer}!\n{h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}")
         prev["h"], prev["a"] = h_g, a_g
 
+    # ارسال خودکار عکس پایان بازی برای تمام لیگ‌ها
     if is_finished and not prev["ft"]:
         banner = f"پایان بازی | {h_name} {h_g} - {a_g} {a_name}"
         if target_chat:
@@ -571,56 +693,77 @@ def process_match_event(state, matches_mem, match_id, league_fa, is_iran, h_name
 
 def check_all_football_free(state):
     matches_mem = state.setdefault("matches", {})
-    summary_lines = ["⚽️ نتایج زنده و بازی‌های امروز:"]
-    CACHE["matches_order"] = []
+    now_greg = jdatetime.datetime.now(TEHRAN_TZ).togregorian()
+    today_compact = now_greg.strftime("%Y%m%d")
 
-    # ۱. لیگ برتر ایران و جام حذفی
-    try:
-        today_compact = jdatetime.datetime.now(TEHRAN_TZ).togregorian().strftime("%Y%m%d")
-        f_url = f"https://www.fotmob.com/api/matches?date={today_compact}"
-        f_leagues = requests.get(f_url, headers=HEADERS, timeout=10).json().get("leagues", [])
-        for lg in f_leagues:
-            lid = lg.get("primaryId")
-            if lid not in (9090, 9384):
-                continue
-            l_fa = "لیگ برتر ایران" if lid == 9090 else "جام حذفی ایران"
-            summary_lines.append(f"\n🏆 {l_fa}:")
-            for m in lg.get("matches", []):
-                mid = f"ir_{m['id']}"
-                st = m.get("status", {})
-                is_live = st.get("started", False) and not st.get("finished", False)
-                is_finished = st.get("finished", False)
-                minute_str = st.get("liveTime", {}).get("short", "").replace("'", "")
+    # پاکسازی لیست موقت هر لیگ پیش از بروزرسانی جدید
+    for lg_key, lg_title in LEAGUE_CATEGORIES:
+        CACHE["leagues"][lg_key] = {
+            "title": lg_title,
+            "lines": [],
+            "match_ids": [],
+            "has_live": False
+        }
 
-                h_name = to_persian_team(m["home"]["name"])
-                a_name = to_persian_team(m["away"]["name"])
-                h_g, a_g = int(m["home"].get("score", 0) or 0), int(m["away"].get("score", 0) or 0)
-                h_logo = f"https://images.fotmob.com/image_resources/logo/teamlogo/{m['home']['id']}.png"
-                a_logo = f"https://images.fotmob.com/image_resources/logo/teamlogo/{m['away']['id']}.png"
-
-                icon = "🔴" if is_live else ("🏁" if is_finished else "🕒")
-                summary_lines.append(f"{icon} {h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}")
-                process_match_event(state, matches_mem, mid, l_fa, True, h_name, a_name, h_g, a_g, h_logo, a_logo, is_live, is_finished, minute_str)
-    except Exception:
-        pass
-
-    # ۲. لیگ‌های معتبر اروپایی
-    espn_leagues = {
-        "eng.1": "لیگ برتر انگلیس",
-        "esp.1": "لالیگا اسپانیا",
-        "ger.1": "بوندسلیگا آلمان",
-        "uefa.champions": "لیگ قهرمانان اروپا"
-    }
-    for code, l_fa in espn_leagues.items():
+    # ۱. لیگ برتر ایران و جام حذفی (ابتدا امروز؛ اگر امروز بازی نبود، نزدیک‌ترین روز هفته جاری)
+    for day_offset in [0, -1, 1, -2, 2, -3]:
+        target_date = (now_greg + timedelta(days=day_offset)).strftime("%Y%m%d")
+        is_today = (day_offset == 0)
+        found_iran = False
         try:
-            url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{code}/scoreboard"
-            events = requests.get(url, headers=HEADERS, timeout=10).json().get("events", [])
-            if events:
-                summary_lines.append(f"\n🏆 {l_fa}:")
-            for ev in events[:6]:
+            f_url = f"https://www.fotmob.com/api/matches?date={target_date}"
+            f_leagues = requests.get(f_url, headers=HEADERS, timeout=10).json().get("leagues", [])
+            for lg in f_leagues:
+                lid = lg.get("primaryId")
+                if lid not in (9090, 9384):
+                    continue
+                found_iran = True
+                l_fa = "لیگ برتر ایران" if lid == 9090 else "جام حذفی ایران"
+                for m in lg.get("matches", []):
+                    mid = f"ir_{m['id']}"
+                    st = m.get("status", {})
+                    is_live = st.get("started", False) and not st.get("finished", False)
+                    is_finished = st.get("finished", False)
+                    minute_str = st.get("liveTime", {}).get("short", "").replace("'", "")
+
+                    h_name = to_persian_team(m["home"]["name"])
+                    a_name = to_persian_team(m["away"]["name"])
+                    h_g, a_g = int(m["home"].get("score", 0) or 0), int(m["away"].get("score", 0) or 0)
+                    h_logo = f"https://images.fotmob.com/image_resources/logo/teamlogo/{m['home']['id']}.png"
+                    a_logo = f"https://images.fotmob.com/image_resources/logo/teamlogo/{m['away']['id']}.png"
+
+                    register_and_check_match(
+                        state, matches_mem, "lg_ir", mid, l_fa, True,
+                        h_name, a_name, h_g, a_g, h_logo, a_logo,
+                        is_live, is_finished, minute_str, allow_auto_alert=is_today
+                    )
+        except Exception:
+            pass
+        if found_iran:
+            break
+
+    # ۲. چهار لیگ معتبر اروپایی (لیگ برتر انگلیس، لالیگا، بوندسلیگا، لیگ قهرمانان اروپا)
+    espn_Configs = [
+        ("lg_eng", "eng.1", "لیگ برتر انگلیس"),
+        ("lg_esp", "esp.1", "لالیگا اسپانیا"),
+        ("lg_ger", "ger.1", "بوندسلیگا آلمان"),
+        ("lg_ucl", "uefa.champions", "لیگ قهرمانان اروپا")
+    ]
+    for lg_key, code, l_fa in espn_Configs:
+        try:
+            # ابتدا بازی‌های روز جاری را بررسی می‌کنیم؛ اگر امروز بازی نبود، هفته جاری همان لیگ را می‌آوریم
+            url_today = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{code}/scoreboard?dates={today_compact}"
+            events = requests.get(url_today, headers=HEADERS, timeout=10).json().get("events", [])
+            is_today_batch = True
+            if not events:
+                url_current = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{code}/scoreboard"
+                events = requests.get(url_current, headers=HEADERS, timeout=10).json().get("events", [])
+                is_today_batch = False
+
+            for ev in events[:10]:
                 mid = f"eu_{ev['id']}"
                 comp = ev["competitions"][0]
-                state_type = ev["status"]["type"]["state"]
+                state_type = ev["status"]["type"]["state"]  # pre, in, post
                 is_live = (state_type == "in")
                 is_finished = (state_type == "post")
                 minute_str = ev["status"]["type"].get("shortDetail", "")
@@ -633,33 +776,17 @@ def check_all_football_free(state):
                 h_g, a_g = int(home.get("score", 0) or 0), int(away.get("score", 0) or 0)
                 h_logo, a_logo = home["team"].get("logo", ""), away["team"].get("logo", "")
 
-                icon = "🔴" if is_live else ("🏁" if is_finished else "🕒")
-                summary_lines.append(f"{icon} {h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}")
-                process_match_event(state, matches_mem, mid, l_fa, False, h_name, a_name, h_g, a_g, h_logo, a_logo, is_live, is_finished, minute_str)
+                register_and_check_match(
+                    state, matches_mem, lg_key, mid, l_fa, False,
+                    h_name, a_name, h_g, a_g, h_logo, a_logo,
+                    is_live, is_finished, minute_str, allow_auto_alert=is_today_batch
+                )
         except Exception:
             pass
 
-    if len(summary_lines) > 1:
-        CACHE["matches_summary_text"] = "\n".join(summary_lines)[:3500]
-    else:
-        # اگر هیچ بازی زنده‌ای در جدول نبود، یک بازی نمونه در لیست قرار بده
-        sample_id = "ir_sample"
-        CACHE["matches_by_id"][sample_id] = {
-            "league_title": "زنده | لیگ برتر ایران",
-            "league_fa": "لیگ برتر ایران",
-            "h_name": "پرسپولیس",
-            "a_name": "استقلال",
-            "h_g": 1,
-            "a_g": 2,
-            "h_logo": IRAN_LOGOS["پرسپولیس"],
-            "a_logo": IRAN_LOGOS["استقلال"],
-            "banner": "گزارش زنده | پرسپولیس ۱ - ۲ استقلال"
-        }
-        CACHE["matches_order"] = [sample_id]
-        CACHE["matches_summary_text"] = "⚽️ در حال حاضر بازی فعالی در جدول امروز ثبت نشده است."
-
 
 def background_worker(state):
+    """اجرای ۲۴ ساعته در تمام روزهای هفته: بروزرسانی هر ۶۰ ثانیه + ارسال خودکار راس ساعت ۷ صبح"""
     while True:
         try:
             refresh_daily_data_cache()
@@ -670,6 +797,7 @@ def background_worker(state):
             target_chat = get_target_chat_id(state)
 
             if now_tehran.hour == 7 and state.get("last_morning_date") != today_gregorian and target_chat:
+                refresh_daily_data_cache()
                 send_telegram_photo(target_chat, build_morning_image(), "☀️ صبح بخیر | تقویم، اوقات شرعی و نبض بازار امروز")
                 send_telegram_photo(target_chat, build_weather_image(), "🌤 وضعیت آب و هوای امروز")
                 state["last_morning_date"] = today_gregorian
@@ -681,7 +809,7 @@ def background_worker(state):
 
 
 # =====================================================================
-# ۶. پاسخگویی فوری به منوی ربات و ساخت عکس برای هر بازی انتخابی
+# ۶. پاسخگویی فوری به منوی ربات، انتخاب لیگ و ساخت عکس بازی‌ها
 # =====================================================================
 def handle_user_request(chat_id, text):
     t = text.strip()
@@ -692,13 +820,26 @@ def handle_user_request(chat_id, text):
         img = build_weather_image()
         send_telegram_photo(chat_id, img, "🌤 وضعیت لحظه‌ای آب و هوا")
     elif "نتایج زنده" in t or "فوتبال" in t or t == "/football":
-        send_football_report_with_photo_buttons(chat_id)
+        send_league_selection_question(chat_id)
     else:
         send_menu_keyboard(chat_id, "👇 لطفاً یکی از ۳ کلید موجود در منوی پایین صفحه را انتخاب کنید:")
 
 
-def handle_match_photo_callback(chat_id, data):
-    if data.startswith("mkimg_"):
+def handle_callback_query(chat_id, message_id, cb_id, data):
+    # ۱. کاربر یکی از ۵ لیگ را انتخاب کرده است
+    if data.startswith("showlg_"):
+        answer_callback(cb_id, "⚽️ دریافت لیست بازی‌های لیگ...")
+        lg_key = data.replace("showlg_", "", 1)
+        send_specific_league_matches(chat_id, lg_key, message_id=message_id)
+
+    # ۲. کاربر دکمه «بازگشت به انتخاب لیگ‌ها» را زده است
+    elif data == "back_leagues":
+        answer_callback(cb_id)
+        send_league_selection_question(chat_id, message_id=message_id)
+
+    # ۳. کاربر روی یک بازی زده تا عکس گرافیکی آن ساخته و ارسال شود
+    elif data.startswith("mkimg_"):
+        answer_callback(cb_id, "🎨 در حال ساخت و ارسال عکس بازی...")
         mid = data.replace("mkimg_", "", 1)
         m = CACHE["matches_by_id"].get(mid)
         if m:
@@ -706,7 +847,7 @@ def handle_match_photo_callback(chat_id, data):
                 m["league_title"], m["h_name"], m["a_name"],
                 m["h_g"], m["a_g"], m["h_logo"], m["a_logo"], m["banner"]
             )
-            caption = f"🏁 {m['league_fa']}\n⚽️ {m['h_name']} {to_fa_digits(m['h_g'])} - {to_fa_digits(m['a_g'])} {m['a_name']}"
+            caption = f"{m['status_emoji']} {m['status_label']} ({m['league_fa']})\n⚽️ {m['h_name']} {to_fa_digits(m['h_g'])} - {to_fa_digits(m['a_g'])} {m['a_name']}"
             send_telegram_photo(chat_id, img, caption)
 
 
@@ -734,7 +875,6 @@ if __name__ == "__main__":
             for upd in res.get("result", []):
                 offset = upd["update_id"] + 1
 
-                # ۱. دریافت پیام از ۳ دکمه منوی پایین ربات
                 if "message" in upd and "text" in upd["message"]:
                     cid = upd["message"]["chat"]["id"]
                     txt = upd["message"]["text"]
@@ -743,13 +883,12 @@ if __name__ == "__main__":
                         save_state(state)
                     threading.Thread(target=handle_user_request, args=(cid, txt), daemon=True).start()
 
-                # ۲. دریافت کلیک روی دکمه «📸 عکس: ...» برای هر بازی خاص
                 elif "callback_query" in upd:
                     cb = upd["callback_query"]
                     cb_id = cb["id"]
                     cid = cb["message"]["chat"]["id"]
+                    mid = cb["message"]["message_id"]
                     data = cb.get("data", "")
-                    answer_callback(cb_id)
-                    threading.Thread(target=handle_match_photo_callback, args=(cid, data), daemon=True).start()
+                    threading.Thread(target=handle_callback_query, args=(cid, mid, cb_id, data), daemon=True).start()
         except Exception:
             time.sleep(2)
