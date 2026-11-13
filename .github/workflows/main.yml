@@ -26,10 +26,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Persian Font & System Libraries
+      - name: Install Persian Nastaliq & Vazirmatn Fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y libraqm0 libfribidi0 libharfbuzz0b fonts-vazirmatn
+          sudo apt-get install -y libraqm0 libfribidi0 libharfbuzz0b fonts-vazirmatn wget
+          wget -q -O IranNastaliq.ttf "https://github.com/Nicolo24/IranNastaliq/raw/master/IranNastaliq.ttf" || true
           pip install --upgrade Pillow requests jdatetime pytz
 
       - name: Run 24/7 Bot
