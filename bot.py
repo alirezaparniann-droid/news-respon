@@ -26,19 +26,16 @@ CITY_LON = 52.5837
 TEHRAN_TZ = pytz.timezone("Asia/Tehran")
 STATE_FILE = "state.json"
 
-NASTALIQ_CANDIDATES = [
-    "IranNastaliq.ttf",
-    "Nastaliq.ttf",
-    "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Bold.ttf"
+CALLIGRAPHY_FONT_FILE = "Calligraphic.ttf"
+SPORT_FONT_FILE = "SportFont.ttf"
+
+CALLIGRAPHY_URLS = [
+    "https://raw.githubusercontent.com/google/fonts/main/ofl/arefruqaa/ArefRuqaa-Bold.ttf",
+    "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/arefruqaa/ArefRuqaa-Bold.ttf"
 ]
-VAZIR_CANDIDATES = [
-    "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Bold.ttf",
-    "Vazirmatn-Bold.ttf",
-    "font.ttf"
-]
-NASTALIQ_URLS = [
-    "https://github.com/Nicolo24/IranNastaliq/raw/master/IranNastaliq.ttf",
-    "https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/ttf/Vazirmatn-Bold.ttf"
+SPORT_URLS = [
+    "https://raw.githubusercontent.com/google/fonts/main/ofl/lalezar/Lalezar-Regular.ttf",
+    "https://cdn.jsdelivr.net/gh/BornaIz/Lalezar@master/fonts/ttf/Lalezar-Regular.ttf"
 ]
 
 HEADERS = {
@@ -46,7 +43,6 @@ HEADERS = {
     "Cache-Control": "no-cache"
 }
 
-# منوی ثابت پایین صفحه ربات (همراه با دکمه تنظیمات)
 BOT_MENU_KEYBOARD = json.dumps({
     "keyboard": [
         [{"text": "🌞 صبح بخیر"}, {"text": "⛅ وضعیت هوا"}],
@@ -56,7 +52,6 @@ BOT_MENU_KEYBOARD = json.dumps({
     "is_persistent": True
 })
 
-# گنجینه ابیات ناب حافظ شیرازی برای درج روزانه در پایین پوستر صبح بخیر
 HAFEZ_POEMS = [
     ("رواق منظر چشم من آشیانه توست", "کرم نما و فرود آ که خانه خانه توست"),
     ("درخت دوستی بنشان که کام دل به بار آرد", "نهال دشمنی برکن که رنج بیشمار آرد"),
@@ -82,7 +77,6 @@ LEAGUE_CATEGORIES = [
     ("lg_ucl", "🏆 لیگ قهرمانان اروپا")
 ]
 
-# لوگوهای تیم های لیگ برتر ایران
 IRAN_LOGOS = {
     'فجر سپاسی': 'https://raw.githubusercontent.com/LordArma/Iran-Football-Leagues/refs/heads/master/Persian%20Gulf%20Pro%20League/%D9%81%D8%AC%D8%B1%20%D8%B4%D9%87%DB%8C%D8%AF%20%D8%B3%D9%BE%D8%A7%D8%B3%DB%8C.png',
     'فجرسپاسی': 'https://raw.githubusercontent.com/LordArma/Iran-Football-Leagues/refs/heads/master/Persian%20Gulf%20Pro%20League/%D9%81%D8%AC%D8%B1%20%D8%B4%D9%87%DB%8C%D8%AF%20%D8%B3%D9%BE%D8%A7%D8%B3%DB%8C.png',
@@ -198,114 +192,184 @@ LOGO_RAM = {}
 
 
 # =====================================================================
-# 2. موتور خوشنویسی نستعلیق با افکت گرادیانت طلایی و سایه ملایم
+# 2. موتور فونت خوشنویسی (برای عکس 1 و 2) و فونت ورزشی لاله زار (عکس 3، 4، 5)
 # =====================================================================
+def download_file_if_missing(filename, urls):
+    if os.path.exists(filename) and os.path.getsize(filename) > 15000:
+        return
+    for url in urls:
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=15)
+            if r.status_code == 200 and len(r.content) > 15000:
+                with open(filename, "wb") as f:
+                    f.write(r.content)
+                return
+        except Exception:
+            pass
+
+
 def ensure_fonts():
-    if not os.path.exists("IranNastaliq.ttf") or os.path.getsize("IranNastaliq.ttf") < 10000:
-        for url in NASTALIQ_URLS:
-            try:
-                r = requests.get(url, timeout=15)
-                if r.status_code == 200 and len(r.content) > 10000:
-                    with open("IranNastaliq.ttf", "wb") as f:
-                        f.write(r.content)
-                    break
-            except Exception:
-                pass
+    download_file_if_missing(CALLIGRAPHY_FONT_FILE, CALLIGRAPHY_URLS)
+    download_file_if_missing(SPORT_FONT_FILE, SPORT_URLS)
 
 
-def get_nastaliq_font(size):
+def get_calligraphy_font(size):
+    """فونت خوشنویسی شکسته/رقعه دقیقا مطابق عکس وضعیت آب و هوای شیراز"""
     ensure_fonts()
-    for path in NASTALIQ_CANDIDATES:
-        if os.path.exists(path) and os.path.getsize(path) > 10000:
+    for path in [CALLIGRAPHY_FONT_FILE, "/usr/share/fonts/opentype/hosny-amiri/Amiri-Bold.ttf", "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Bold.ttf"]:
+        if os.path.exists(path) and os.path.getsize(path) > 15000:
             return ImageFont.truetype(path, size)
     return ImageFont.load_default()
 
 
-def get_vazir_font(size):
-    for path in VAZIR_CANDIDATES:
-        if os.path.exists(path) and os.path.getsize(path) > 10000:
+def get_sport_font(size):
+    """فونت گرافیکی و ضخیم ورزشی لاله زار برای پوسترهای فوتبال"""
+    ensure_fonts()
+    for path in [SPORT_FONT_FILE, "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Bold.ttf"]:
+        if os.path.exists(path) and os.path.getsize(path) > 15000:
             return ImageFont.truetype(path, size)
-    return get_nastaliq_font(size)
+    return ImageFont.load_default()
 
 
 def to_fa_digits(val):
-    en = "0123456789"
-    fa = "۰۱۲۳۴۵۶۷۸۹"
+    en = "0123456789."
+    fa = "۰۱۲۳۴۵۶۷۸۹/"
     res = str(val)
     for e, f in zip(en, fa):
         res = res.replace(e, f)
     return res
 
 
-def draw_nastaliq_effect(base_img, center_x, y, text, size, style="gold"):
-    """چاپ متن با فونت نستعلیق، گرادیانت طلایی (یا تیره/سفید) و سایه ملایم"""
+def draw_calligraphic_text(base_img, center_x, center_y, text, size, style="gold"):
+    """
+    چاپ متن خوشنویسی دقیقا در مرکز (center_x, center_y)
+    با افکت گرادیانت طلایی سه بعدی و سایه نرم بدون بیرون زدگی از کادر
+    """
     clean_text = to_fa_digits(text)
-    font = get_nastaliq_font(size)
+    font = get_calligraphy_font(size)
     dummy = ImageDraw.Draw(base_img)
     bbox = dummy.textbbox((0, 0), clean_text, font=font, direction="rtl", language="fa")
     tw = max(1, bbox[2] - bbox[0])
     th = max(1, bbox[3] - bbox[1])
-    pad = 35
+    pad = 28
 
-    mask = Image.new("L", (tw + pad * 2, th + pad * 2), 0)
+    w_canvas = tw + pad * 2
+    h_canvas = th + pad * 2
+
+    mask = Image.new("L", (w_canvas, h_canvas), 0)
     mdraw = ImageDraw.Draw(mask)
     mdraw.text((pad - bbox[0], pad - bbox[1]), clean_text, font=font, fill=255, direction="rtl", language="fa")
 
-    # 1. لایه سایه ملایم (GaussianBlur)
-    shadow_alpha = mask.filter(ImageFilter.GaussianBlur(radius=4))
-    shadow_layer = Image.new("RGBA", mask.size, (0, 0, 0, 0))
-    s_solid = Image.new("RGBA", mask.size, (10, 10, 10, 175 if style != "dark" else 85))
+    # سایه ملایم و طبیعی
+    shadow_alpha = mask.filter(ImageFilter.GaussianBlur(radius=3 if style != "dark" else 1.5))
+    shadow_layer = Image.new("RGBA", (w_canvas, h_canvas), (0, 0, 0, 0))
+    s_alpha = 185 if style in ("gold", "white_gold") else 65
+    s_solid = Image.new("RGBA", (w_canvas, h_canvas), (8, 6, 15, s_alpha))
     shadow_layer.paste(s_solid, (0, 0), shadow_alpha)
 
-    # 2. لایه گرادیانت طلایی یا رنگ دلخواه
-    grad = Image.new("RGBA", mask.size)
+    # گرادیانت رنگ
+    grad = Image.new("RGBA", (w_canvas, h_canvas))
     gdraw = ImageDraw.Draw(grad)
-    h_total = mask.size[1]
-    for row in range(h_total):
-        ratio = row / max(1, h_total - 1)
+    for row in range(h_canvas):
+        ratio = row / max(1, h_canvas - 1)
         if style == "gold":
-            r = int(255 - 55 * ratio)
-            g = int(238 - 88 * ratio)
-            b = int(165 - 110 * ratio)
+            # طلایی روشن تا طلایی برنزی گرم دقیقا مشابه تیتر عکس وضعیت آب و هوای شیراز
+            r = int(252 - 58 * ratio)
+            g = int(226 - 82 * ratio)
+            b = int(148 - 92 * ratio)
         elif style == "bronze":
-            r = int(175 - 50 * ratio)
-            g = int(118 - 45 * ratio)
-            b = int(52 - 30 * ratio)
-        elif style == "green_gold":
-            r = int(35 + 45 * ratio)
-            g = int(85 + 35 * ratio)
-            b = int(62 + 15 * ratio)
+            r = int(165 - 45 * ratio)
+            g = int(105 - 40 * ratio)
+            b = int(42 - 25 * ratio)
         elif style == "white_gold":
-            r = int(255 - 15 * ratio)
-            g = int(255 - 25 * ratio)
-            b = int(255 - 55 * ratio)
-        else:  # dark
-            r = int(32 - 15 * ratio)
+            r = int(255 - 12 * ratio)
+            g = int(252 - 22 * ratio)
+            b = int(240 - 45 * ratio)
+        else:  # dark (متن های تیره داخل کادر کرم صبح بخیر)
+            r = int(28 - 12 * ratio)
             g = int(42 - 15 * ratio)
-            b = int(38 - 15 * ratio)
-        gdraw.line([(0, row), (mask.size[0], row)], fill=(r, g, b, 255))
+            b = int(36 - 12 * ratio)
+        gdraw.line([(0, row), (w_canvas, row)], fill=(r, g, b, 255))
 
-    text_layer = Image.new("RGBA", mask.size, (0, 0, 0, 0))
+    text_layer = Image.new("RGBA", (w_canvas, h_canvas), (0, 0, 0, 0))
     text_layer.paste(grad, (0, 0), mask)
 
-    px = int(center_x - tw / 2 - pad)
-    py = int(y - pad)
-    base_img.alpha_composite(shadow_layer, (px + 3, py + 5))
+    px = int(center_x - w_canvas / 2)
+    py = int(center_y - h_canvas / 2)
+    offset_y = 4 if style in ("gold", "white_gold") else 2
+    base_img.alpha_composite(shadow_layer, (px + 2, py + offset_y))
     base_img.alpha_composite(text_layer, (px, py))
 
 
-def draw_rtl_centered(draw, y, text, font, fill, width=1080):
+def draw_sport_3d_text(base_img, center_x, center_y, text, size, style="gold"):
+    """
+    چاپ متن ورزشی با فونت ضخیم لاله زار، حاشیه تیره (Stroke) و گرادیانت متالیک ورزشی
+    دقیقا در مرکز (center_x, center_y)
+    """
     clean_text = to_fa_digits(text)
-    bbox = draw.textbbox((0, 0), clean_text, font=font, direction="rtl", language="fa")
-    w = bbox[2] - bbox[0]
-    draw.text(((width - w) / 2, y), clean_text, font=font, fill=fill, direction="rtl", language="fa")
+    font = get_sport_font(size)
+    dummy = ImageDraw.Draw(base_img)
+    stroke_w = max(3, size // 16)
+    bbox = dummy.textbbox((0, 0), clean_text, font=font, stroke_width=stroke_w, direction="rtl", language="fa")
+    tw = max(1, bbox[2] - bbox[0])
+    th = max(1, bbox[3] - bbox[1])
+    pad = 24
+
+    w_canvas = tw + pad * 2
+    h_canvas = th + pad * 2
+
+    # لایه حاشیه و سایه تیره ورزشی
+    stroke_layer = Image.new("RGBA", (w_canvas, h_canvas), (0, 0, 0, 0))
+    sdraw = ImageDraw.Draw(stroke_layer)
+    sdraw.text(
+        (pad - bbox[0], pad - bbox[1] + 4),
+        clean_text, font=font, fill=(5, 8, 14, 210),
+        stroke_width=stroke_w + 2, stroke_fill=(5, 8, 14, 210),
+        direction="rtl", language="fa"
+    )
+    stroke_layer = stroke_layer.filter(ImageFilter.GaussianBlur(radius=2))
+    sdraw = ImageDraw.Draw(stroke_layer)
+    sdraw.text(
+        (pad - bbox[0], pad - bbox[1]),
+        clean_text, font=font, fill=(12, 16, 24, 255),
+        stroke_width=stroke_w, stroke_fill=(12, 16, 24, 255),
+        direction="rtl", language="fa"
+    )
+
+    # ماسک داخلی حروف برای گرادیانت متالیک
+    fill_mask = Image.new("L", (w_canvas, h_canvas), 0)
+    fdraw = ImageDraw.Draw(fill_mask)
+    fdraw.text((pad - bbox[0], pad - bbox[1]), clean_text, font=font, fill=255, direction="rtl", language="fa")
+
+    grad = Image.new("RGBA", (w_canvas, h_canvas))
+    gdraw = ImageDraw.Draw(grad)
+    for row in range(h_canvas):
+        ratio = row / max(1, h_canvas - 1)
+        if style == "gold":
+            r = int(255 - 45 * ratio)
+            g = int(242 - 95 * ratio)
+            b = int(155 - 125 * ratio)
+        elif style == "white":
+            r = int(255 - 20 * ratio)
+            g = int(255 - 20 * ratio)
+            b = int(255 - 15 * ratio)
+        else:  # dark
+            r, g, b = 20, 20, 20
+        gdraw.line([(0, row), (w_canvas, row)], fill=(r, g, b, 255))
+
+    stroke_layer.paste(grad, (0, 0), fill_mask)
+
+    px = int(center_x - w_canvas / 2)
+    py = int(center_y - h_canvas / 2)
+    base_img.alpha_composite(stroke_layer, (px, py))
 
 
-def draw_rtl_at_x(draw, center_x, y, text, font, fill):
-    clean_text = to_fa_digits(text)
-    bbox = draw.textbbox((0, 0), clean_text, font=font, direction="rtl", language="fa")
-    w = bbox[2] - bbox[0]
-    draw.text((center_x - w / 2, y), clean_text, font=font, fill=fill, direction="rtl", language="fa")
+def has_preprinted_weather_title(img):
+    """تشخیص خودکار اینکه آیا عکس 2.jpg از قبل تیتر طلایی «وضعیت آب و هوای شیراز» را دارد یا خیر"""
+    crop = img.crop((200, 120, 880, 270)).convert("RGB")
+    pixels = list(crop.getdata())
+    bright_gold_count = sum(1 for r, g, b in pixels if r > 160 and g > 125 and b < 140)
+    return bright_gold_count > 1200
 
 
 def preload_templates():
@@ -358,7 +422,7 @@ def to_persian_text(raw_name):
 
 
 # =====================================================================
-# 4. ساخت هر 5 پوستر استوری (1080x1920)
+# 4. ساخت هر 5 پوستر استوری با کالیبراسیون میلی متری
 # =====================================================================
 def get_persian_date():
     now = jdatetime.datetime.now(TEHRAN_TZ)
@@ -370,72 +434,94 @@ def get_persian_date():
 
 
 def build_morning_image():
-    """پوستر 1: صبح بخیر شیراز با خط نستعلیق طلایی + بیت روزانه حافظ در پایین"""
+    """پوستر 1: صبح بخیر شیراز با تمام متون خوشنویسی و بیت حافظ دقیق در کادر پایین"""
     full_date, _, day_num = get_persian_date()
     fajr, sunrise, dhuhr, maghrib = CACHE["prayers"]
     w = CACHE["weather"]
     usd, gold, coin = CACHE["market"]
 
     base = TEMPLATES_RAM["t1"].copy()
+    draw = ImageDraw.Draw(base)
 
-    # تیترها و متن ها با خط نستعلیق، گرادیانت طلایی و سایه ملایم
-    draw_nastaliq_effect(base, 540, 210, f"صبح بخیر {CITY_NAME_FA}", 78, style="gold")
-    draw_nastaliq_effect(base, 540, 340, "تقویم و گزارش روزانه", 46, style="bronze")
-    draw_nastaliq_effect(base, 540, 415, full_date, 52, style="dark")
+    # خطوط ظریف طلایی جداکننده داخل کادر اصلی
+    draw.line([(240, 525), (840, 525)], fill=(195, 155, 75, 160), width=2)
+    draw.line([(240, 785), (840, 785)], fill=(195, 155, 75, 160), width=2)
+    draw.line([(240, 1045), (840, 1045)], fill=(195, 155, 75, 160), width=2)
 
-    draw_nastaliq_effect(base, 540, 525, f"اوقات شرعی به افق {CITY_NAME_FA}", 46, style="bronze")
-    draw_nastaliq_effect(base, 540, 600, f"اذان صبح {fajr}  |  طلوع آفتاب {sunrise}", 40, style="dark")
-    draw_nastaliq_effect(base, 540, 665, f"اذان ظهر {dhuhr}  |  اذان مغرب {maghrib}", 40, style="dark")
+    # تمامی متون با فونت خوشنویسی (Calligraphic)
+    draw_calligraphic_text(base, 540, 270, f"صبح بخیر {CITY_NAME_FA}", 82, style="gold")
+    draw_calligraphic_text(base, 540, 385, "تقویم و گزارش روزانه", 45, style="bronze")
+    draw_calligraphic_text(base, 540, 465, full_date, 52, style="dark")
 
-    draw_nastaliq_effect(base, 540, 760, "وضعیت آب و هوا", 46, style="bronze")
-    draw_nastaliq_effect(base, 540, 835, f"دمای فعلی: {w['temp']} درجه", 40, style="dark")
-    draw_nastaliq_effect(base, 540, 900, f"بیشینه {w['max']}  |  کمینه {w['min']}", 40, style="dark")
+    draw_calligraphic_text(base, 540, 575, f"اوقات شرعی به افق {CITY_NAME_FA}", 45, style="bronze")
+    draw_calligraphic_text(base, 540, 650, f"اذان صبح {fajr}   |   طلوع آفتاب {sunrise}", 40, style="dark")
+    draw_calligraphic_text(base, 540, 725, f"اذان ظهر {dhuhr}   |   اذان مغرب {maghrib}", 40, style="dark")
 
-    draw_nastaliq_effect(base, 540, 995, "نبض بازار طلا و ارز", 46, style="bronze")
-    draw_nastaliq_effect(base, 540, 1070, f"دلار آزاد: {usd} ریال", 40, style="dark")
-    draw_nastaliq_effect(base, 540, 1135, f"طلای ۱۸ عیار: {gold} ریال", 40, style="dark")
-    draw_nastaliq_effect(base, 540, 1200, f"سکه امامی: {coin} ریال", 40, style="dark")
+    draw_calligraphic_text(base, 540, 835, "وضعیت آب و هوا", 45, style="bronze")
+    draw_calligraphic_text(base, 540, 910, f"دمای فعلی: {w['temp']} درجه", 40, style="dark")
+    draw_calligraphic_text(base, 540, 985, f"بیشینه {w['max']}   |   کمینه {w['min']}", 40, style="dark")
 
-    # بیت روزانه حافظ شیرازی در کادر پایین صفحه
+    draw_calligraphic_text(base, 540, 1095, "نبض بازار طلا و ارز", 45, style="bronze")
+    draw_calligraphic_text(base, 540, 1175, f"دلار آزاد: {usd} ریال", 40, style="dark")
+    draw_calligraphic_text(base, 540, 1250, f"طلای ۱۸ عیار: {gold} ریال", 40, style="dark")
+    draw_calligraphic_text(base, 540, 1325, f"سکه امامی: {coin} ریال", 40, style="dark")
+
+    # بیت روزانه حافظ شیرازی دقیقا در مرکز کادر پایین (y=1665..1835)
     hem1, hem2 = HAFEZ_POEMS[day_num % len(HAFEZ_POEMS)]
-    draw_nastaliq_effect(base, 540, 1650, hem1, 38, style="dark")
-    draw_nastaliq_effect(base, 540, 1715, hem2, 38, style="dark")
+    draw_calligraphic_text(base, 540, 1715, hem1, 36, style="dark")
+    draw_calligraphic_text(base, 540, 1785, hem2, 36, style="dark")
 
     return base
 
 
 def build_weather_image():
-    """پوستر 2: وضعیت آب و هوای شیراز با خط نستعلیق طلایی و نوار 4 زمانه پایین"""
+    """پوستر 2: وضعیت آب و هوای شیراز با فونت خوشنویسی طلایی و تراز دقیق داخل تمام کادرها"""
     _, short_date, _ = get_persian_date()
     w = CACHE["weather"]
     p_morn, p_noon, p_eve, p_night = w.get("periods", (12, 20, 16, 8))
 
     base = TEMPLATES_RAM["t2"].copy()
 
-    # تیتر بالا و تاریخ با خط نستعلیق طلایی
-    draw_nastaliq_effect(base, 540, 140, f"وضعیت آب و هوای {CITY_NAME_FA}", 74, style="gold")
-    draw_nastaliq_effect(base, 540, 275, short_date, 56, style="white_gold")
+    # اگر قالب 2.jpg از قبل تیتر «وضعیت آب و هوای شیراز» را نداشت، با همان فونت خوشنویسی طلایی چاپ کن
+    if not has_preprinted_weather_title(base):
+        draw_calligraphic_text(base, 540, 195, f"وضعیت آب و هوای {CITY_NAME_FA}", 84, style="gold")
+        date_cy = 355
+    else:
+        date_cy = 395
 
-    # دمای فعلی داخل کادر شیشه ای سمت چپ
-    draw_nastaliq_effect(base, 355, 690, f"{w['temp_int']} درجه", 96, style="gold")
+    # تاریخ شمسی
+    draw_calligraphic_text(base, 540, date_cy, short_date, 58, style="white_gold")
 
-    # وضعیت آسمان زیر آیکون خورشید و ابر
-    draw_nastaliq_effect(base, 795, 920, w["desc"], 48, style="white_gold")
+    # دمای فعلی دقیقا در مرکز کادر مربع سمت چپ (x=365, cy=828)
+    draw_calligraphic_text(base, 365, 825, f"{w['temp_int']} درجه", 104, style="gold")
 
-    # 4 نوار شیشه ای پایین با خط نستعلیق
-    draw_nastaliq_effect(base, 540, 1145, f"بیشینه روز: {round(w['max'])} درجه / کمینه شب: {round(w['min'])} درجه", 42, style="white_gold")
-    draw_nastaliq_effect(base, 540, 1300, f"سرعت باد: {w['wind']} کیلومتر بر ساعت", 44, style="white_gold")
-    draw_nastaliq_effect(base, 540, 1455, f"رطوبت: {w['humidity']} درصد", 44, style="white_gold")
-    draw_nastaliq_effect(
-        base, 540, 1625,
-        f"صبح: {p_morn} درجه  |  ظهر: {p_noon} درجه  |  عصر: {p_eve} درجه  |  شب: {p_night} درجه",
-        35, style="gold"
+    # وضعیت آسمان دقیقا در مرکز زیر آیکون خورشید (x=790, cy=1000)
+    draw_calligraphic_text(base, 790, 1000, w["desc"], 50, style="white_gold")
+
+    # بررسی وجود نوار چهارم در پایین عکس؛ اگر قالب 3 نواره بود، نوار شیشه ای چهارم را هم رسم کن
+    crop_bar4 = base.crop((200, 1650, 880, 1730)).convert("RGB")
+    avg_b = sum(sum(px) for px in crop_bar4.getdata()) / (len(list(crop_bar4.getdata())) * 3)
+    if avg_b < 45:
+        overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+        odraw = ImageDraw.Draw(overlay)
+        odraw.rounded_rectangle([102, 1632, 978, 1758], radius=28, fill=(92, 88, 110, 215), outline=(195, 185, 205, 240), width=3)
+        base = Image.alpha_composite(base, overlay)
+
+    # 4 نوار شیشه ای پایین دقیقا در مرکز عمودی هر نوار (cy = 1215, 1375, 1535, 1695)
+    draw_calligraphic_text(base, 540, 1215, f"بیشینه روز: {round(w['max'])} درجه  /  کمینه شب: {round(w['min'])} درجه", 44, style="white_gold")
+    draw_calligraphic_text(base, 540, 1375, f"سرعت باد: {w['wind']} کیلومتر بر ساعت", 46, style="white_gold")
+    draw_calligraphic_text(base, 540, 1535, f"رطوبت: {w['humidity']} درصد", 46, style="white_gold")
+    draw_calligraphic_text(
+        base, 540, 1695,
+        f"صبح: {p_morn} درجه   |   ظهر: {p_noon} درجه   |   عصر: {p_eve} درجه   |   شب: {p_night} درجه",
+        38, style="gold"
     )
 
     return base
 
 
-def fetch_logo_circle(team_name_fa, fallback_url, diameter=166):
+def fetch_logo_circle(team_name_fa, fallback_url, diameter=146):
+    """ساخت لوگوی دایره ای دقیقا هم اندازه داخل حلقه طلایی بدون بیرون زدگی"""
     url = fallback_url
     norm_name = team_name_fa.replace("\u200c", " ")
     for k, v in IRAN_LOGOS.items():
@@ -446,25 +532,50 @@ def fetch_logo_circle(team_name_fa, fallback_url, diameter=166):
     if cache_key in LOGO_RAM:
         return LOGO_RAM[cache_key]
 
-    logo_bg = Image.new("RGBA", (diameter, diameter), (255, 255, 255, 255))
+    logo_bg = Image.new("RGBA", (diameter, diameter), (248, 248, 252, 255))
     if url:
         try:
             r = requests.get(url, headers=HEADERS, timeout=6)
             raw = Image.open(io.BytesIO(r.content)).convert("RGBA")
-            raw.thumbnail((int(diameter * 0.82), int(diameter * 0.82)), Image.Resampling.LANCZOS)
+            pad_size = int(diameter * 0.78)
+            raw.thumbnail((pad_size, pad_size), Image.Resampling.LANCZOS)
             logo_bg.paste(raw, ((diameter - raw.width) // 2, (diameter - raw.height) // 2), raw)
         except Exception:
             pass
+
     mask = Image.new("L", (diameter, diameter), 0)
-    ImageDraw.Draw(mask).ellipse((0, 0, diameter, diameter), fill=255)
+    ImageDraw.Draw(mask).ellipse((2, 2, diameter - 2, diameter - 2), fill=255)
     out = Image.new("RGBA", (diameter, diameter), (0, 0, 0, 0))
     out.paste(logo_bg, (0, 0), mask)
+
+    # حلقه ظریف طلایی دور لوگو برای نشستن طبیعی داخل قاب
+    bdraw = ImageDraw.Draw(out)
+    bdraw.ellipse((1, 1, diameter - 2, diameter - 2), outline=(215, 180, 105, 255), width=3)
+
     LOGO_RAM[cache_key] = out
     return out
 
 
+def paint_clean_bottom_gold_bar(base_img, footer_text):
+    """پاکسازی کامل نوار طلایی پایین پوسترهای ورزشی و جلوگیری از دو بار چاپ شدن متن"""
+    draw = ImageDraw.Draw(base_img)
+    for y in range(1796, 1920):
+        ratio = (y - 1796) / 124.0
+        r = int(238 - 45 * ratio)
+        g = int(205 - 48 * ratio)
+        b = int(132 - 45 * ratio)
+        draw.line([(0, y), (1080, y)], fill=(r, g, b, 255))
+    draw.line([(0, 1796), (1080, 1796)], fill=(255, 238, 180, 255), width=4)
+
+    font = get_sport_font(48)
+    clean_text = to_fa_digits(footer_text)
+    bbox = draw.textbbox((0, 0), clean_text, font=font, direction="rtl", language="fa")
+    tw = bbox[2] - bbox[0]
+    th = bbox[3] - bbox[1]
+    draw.text(((1080 - tw) / 2, 1858 - th / 2 - bbox[1]), clean_text, font=font, fill=(20, 18, 15, 255), direction="rtl", language="fa")
+
+
 def get_match_detailed_stats_fa(m):
-    """استخراج آمار بازی و نام گلزنان به زبان کاملا فارسی"""
     h_name, a_name = m["h_name"], m["a_name"]
     h_g, a_g = int(m["h_g"]), int(m["a_g"])
     scorers_str = m.get("scorers_fa", "")
@@ -480,7 +591,6 @@ def get_match_detailed_stats_fa(m):
                 parts.append(f"{a_name} ({to_fa_digits(a_g)} گل)")
             scorers_str = "گلزنان: " + " - ".join(parts)
 
-    # محاسبه یا استخراج آمار مالکیت توپ، شوت و کرنر
     seed = int(hashlib.md5(f"{h_name}_{a_name}".encode()).hexdigest()[:6], 16)
     h_poss = m.get("h_poss") or (48 + (seed % 11) + (h_g - a_g) * 2)
     h_poss = max(35, min(68, h_poss))
@@ -494,51 +604,54 @@ def get_match_detailed_stats_fa(m):
 
     return (
         scorers_str,
-        f"مالکیت توپ: {h_name} %{to_fa_digits(h_poss)} - %{to_fa_digits(a_poss)} {a_name}",
-        f"شوت داخل چارچوب: {to_fa_digits(h_shots)} - {to_fa_digits(a_shots)}",
-        f"ضربات کرنر: {to_fa_digits(h_corn)} - {to_fa_digits(a_corn)}"
+        f"مالکیت توپ: {h_name} %{to_fa_digits(h_poss)}  -  %{to_fa_digits(a_poss)} {a_name}",
+        f"شوت داخل چارچوب: {to_fa_digits(h_shots)}  -  {to_fa_digits(a_shots)}",
+        f"ضربات کرنر: {to_fa_digits(h_corn)}  -  {to_fa_digits(a_corn)}"
     )
 
 
 def build_match_image(m, footer_text="گزارش زنده و نتایج فوتبال"):
-    """پوستر 3: گزارش زنده و پایان بازی همراه با کارت آمار کامل و گلزنان به فارسی"""
+    """پوستر 3: گزارش و آمار کامل بازی با فونت ورزشی لاله زار و لوگوهای دقیق داخل حلقه طلایی"""
     base = TEMPLATES_RAM["t3"].copy()
-    draw = ImageDraw.Draw(base)
 
-    # 1. کادر قرمز بالای تصویر
-    draw_rtl_centered(draw, 198, m["league_title"], get_vazir_font(42), (255, 255, 255))
+    # 1. کادر قرمز بالای تصویر (مرکز عمودی cy=236)
+    draw_sport_3d_text(base, 540, 236, m["league_title"], 44, style="white")
 
-    # 2. تیتر سه بعدی طلایی زیر کادر قرمز
-    draw_nastaliq_effect(base, 540, 345, "گزارش و آمار کامل بازی", 74, style="gold")
-    draw = ImageDraw.Draw(base)
+    # 2. تیتر سه بعدی طلایی ورزشی
+    draw_sport_3d_text(base, 540, 415, "گزارش و آمار کامل بازی", 76, style="gold")
 
-    # 3. نتیجه بازی و نام دو تیم در اسکوربورد
-    draw_rtl_centered(draw, 825, f"{m['a_g']} - {m['h_g']}", get_vazir_font(125), (245, 210, 125))
-    draw_rtl_at_x(draw, 244, 1025, m["a_name"], get_vazir_font(34), (255, 255, 255))
-    draw_rtl_at_x(draw, 836, 1025, m["h_name"], get_vazir_font(34), (255, 255, 255))
+    # 3. لوگوها دقیقا در مرکز دو حلقه طلایی (چپ: 240,910 | راست: 840,910 با قطر 146)
+    left_circle = fetch_logo_circle(m["a_name"], m["a_logo"], 146)
+    right_circle = fetch_logo_circle(m["h_name"], m["h_logo"], 146)
+    base.paste(left_circle, (240 - 73, 910 - 73), left_circle)
+    base.paste(right_circle, (840 - 73, 910 - 73), right_circle)
 
-    # 4. کادر بزرگ آمار بازی و گلزنان (مورد 10)
+    # 4. نتیجه درشت وسط و نام دو تیم زیر حلقه ها با فونت ورزشی
+    draw_sport_3d_text(base, 540, 905, f"{m['a_g']} - {m['h_g']}", 130, style="gold")
+    draw_sport_3d_text(base, 240, 1045, m["a_name"], 38, style="white")
+    draw_sport_3d_text(base, 840, 1045, m["h_name"], 38, style="white")
+
+    # 5. پاکسازی داخل کادر مشکی آمار و درج 4 ردیف آمار با خطوط طلایی جداکننده
+    overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    odraw = ImageDraw.Draw(overlay)
+    odraw.rounded_rectangle([126, 1174, 954, 1612], radius=22, fill=(18, 23, 33, 245), outline=(215, 180, 105, 255), width=3)
+    odraw.line([(200, 1288), (880, 1288)], fill=(215, 180, 105, 120), width=2)
+    base = Image.alpha_composite(base, overlay)
+
     line1, line2, line3, line4 = get_match_detailed_stats_fa(m)
-    draw_rtl_centered(draw, 1215, line1, get_vazir_font(32), (245, 215, 140))
-    draw_rtl_centered(draw, 1320, line2, get_vazir_font(36), (255, 255, 255))
-    draw_rtl_centered(draw, 1415, line3, get_vazir_font(36), (255, 255, 255))
-    draw_rtl_centered(draw, 1510, line4, get_vazir_font(36), (255, 255, 255))
+    draw_sport_3d_text(base, 540, 1232, line1, 34, style="gold")
+    draw_sport_3d_text(base, 540, 1345, line2, 40, style="white")
+    draw_sport_3d_text(base, 540, 1445, line3, 40, style="white")
+    draw_sport_3d_text(base, 540, 1545, line4, 40, style="white")
 
-    # 5. نوار طلایی پایین
-    draw_rtl_centered(draw, 1825, footer_text, get_vazir_font(46), (20, 20, 20))
-
-    # 6. لوگوهای دو تیم
-    left_circle = fetch_logo_circle(m["a_name"], m["a_logo"], 166)
-    right_circle = fetch_logo_circle(m["h_name"], m["h_logo"], 166)
-    base.paste(left_circle, (244 - 83, 910 - 83), left_circle)
-    base.paste(right_circle, (836 - 83, 910 - 83), right_circle)
+    # 6. نوار طلایی پایین بدون تداخل متن
+    paint_clean_bottom_gold_bar(base, footer_text)
     return base
 
 
 def build_h2h_matchday_image(m, footer_text="گزارش زنده و نتایج فوتبال"):
-    """پوستر 4: ادغام روز بازی و تقابل رو در رو (H2H) روی قالب 4.jpg"""
+    """پوستر 4: روز بازی و تقابل رو در رو (H2H) با فونت ورزشی لاله زار و کادرهای تراز"""
     base = TEMPLATES_RAM["t4"].copy()
-    draw = ImageDraw.Draw(base)
 
     h_name, a_name = m["h_name"], m["a_name"]
     seed = int(hashlib.md5(f"h2h_{h_name}_{a_name}".encode()).hexdigest()[:6], 16)
@@ -547,58 +660,69 @@ def build_h2h_matchday_image(m, footer_text="گزارش زنده و نتایج �
     a_wins = max(1, 10 - h_wins - draws)
     avg_goals = round(1.8 + ((seed % 12) / 10.0), 1)
 
-    draw_rtl_centered(draw, 198, f"روز بازی | {m['league_fa']}", get_vazir_font(42), (255, 255, 255))
-    draw_nastaliq_effect(base, 540, 345, "پیش بازی و تقابل رو در رو", 72, style="gold")
-    draw = ImageDraw.Draw(base)
+    # 1. کادر قرمز بالا و تیتر ورزشی طلایی
+    draw_sport_3d_text(base, 540, 236, f"روز بازی | {m['league_fa']}", 44, style="white")
+    draw_sport_3d_text(base, 540, 415, "پیش بازی و تقابل رو در رو", 74, style="gold")
 
-    draw_rtl_at_x(draw, 244, 1015, a_name, get_vazir_font(32), (255, 255, 255))
-    draw_rtl_at_x(draw, 836, 1015, h_name, get_vazir_font(32), (255, 255, 255))
-    draw_rtl_centered(draw, 1055, f"{m['status_label']} | {h_name} - {a_name}", get_vazir_font(30), (245, 215, 140))
+    # 2. لوگوها دقیقا داخل حلقه های طلایی (چپ: 240,902 | راست: 840,902)
+    left_circle = fetch_logo_circle(a_name, m["a_logo"], 146)
+    right_circle = fetch_logo_circle(h_name, m["h_logo"], 146)
+    base.paste(left_circle, (240 - 73, 902 - 73), left_circle)
+    base.paste(right_circle, (840 - 73, 902 - 73), right_circle)
 
-    # کادر تقابل رو در رو
-    draw_rtl_centered(draw, 1225, "آمار ۱۰ تقابل اخیر دو تیم", get_vazir_font(44), (245, 215, 140))
-    draw_rtl_centered(
-        draw, 1345,
-        f"برد {h_name}: {to_fa_digits(h_wins)}  |  مساوی: {to_fa_digits(draws)}  |  برد {a_name}: {to_fa_digits(a_wins)}",
-        get_vazir_font(35), (255, 255, 255)
+    draw_sport_3d_text(base, 240, 1032, a_name, 38, style="white")
+    draw_sport_3d_text(base, 840, 1032, h_name, 38, style="white")
+
+    # 3. کادر آمار 10 تقابل اخیر (پاکسازی داخل کادر برای جلوگیری از بیرون زدگی)
+    overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    odraw = ImageDraw.Draw(overlay)
+    odraw.rounded_rectangle([126, 1172, 954, 1595], radius=24, fill=(18, 23, 33, 245), outline=(215, 180, 105, 255), width=3)
+    odraw.line([(200, 1285), (880, 1285)], fill=(215, 180, 105, 120), width=2)
+    base = Image.alpha_composite(base, overlay)
+
+    draw_sport_3d_text(base, 540, 1230, "آمار ۱۰ تقابل اخیر دو تیم", 46, style="gold")
+    draw_sport_3d_text(
+        base, 540, 1345,
+        f"برد {h_name}: {to_fa_digits(h_wins)}   |   مساوی: {to_fa_digits(draws)}   |   برد {a_name}: {to_fa_digits(a_wins)}",
+        38, style="white"
     )
-    draw_rtl_centered(
-        draw, 1455,
+    draw_sport_3d_text(
+        base, 540, 1445,
         f"میانگین گل در هر بازی: {to_fa_digits(avg_goals)} گل",
-        get_vazir_font(38), (245, 215, 140)
+        40, style="gold"
+    )
+    draw_sport_3d_text(
+        base, 540, 1535,
+        f"وضعیت: {m['status_label']}",
+        34, style="white"
     )
 
-    draw_rtl_centered(draw, 1825, footer_text, get_vazir_font(46), (20, 20, 20))
-
-    left_circle = fetch_logo_circle(a_name, m["a_logo"], 166)
-    right_circle = fetch_logo_circle(h_name, m["h_logo"], 166)
-    base.paste(left_circle, (244 - 83, 905 - 83), left_circle)
-    base.paste(right_circle, (836 - 83, 905 - 83), right_circle)
+    paint_clean_bottom_gold_bar(base, footer_text)
     return base
 
 
 def build_multi_match_image(matches_list, title_top="نتایج بازی های امروز", footer_text="گزارش زنده و نتایج فوتبال"):
-    """پوستر 5: استوری تجمیعی نتایج 5 بازی مهم روز روی قالب 5.jpg"""
+    """پوستر 5: جمع بندی نتایج روز با تراز میلی متری هر 5 ردیف و حلقه های طلایی"""
     base = TEMPLATES_RAM["t5"].copy()
-    draw = ImageDraw.Draw(base)
 
-    draw_rtl_centered(draw, 198, title_top, get_vazir_font(42), (255, 255, 255))
-    draw_nastaliq_effect(base, 540, 330, "جمع بندی نتایج روز", 74, style="gold")
-    draw = ImageDraw.Draw(base)
+    draw_sport_3d_text(base, 540, 236, title_top, 44, style="white")
+    draw_sport_3d_text(base, 540, 390, "جمع بندی نتایج روز", 76, style="gold")
 
-    row_y_centers = [648, 848, 1048, 1248, 1448]
+    # مختصات دقیق مرکز 5 نوار افقی و حلقه های طلایی در قالب 5.jpg (1080x1920)
+    row_y_centers = [644, 851, 1060, 1269, 1478]
     for idx, m in enumerate(matches_list[:5]):
         cy = row_y_centers[idx]
-        draw_rtl_centered(draw, cy - 42, f"{m['a_g']} - {m['h_g']}", get_vazir_font(66), (245, 210, 125))
-        draw_rtl_at_x(draw, 735, cy - 22, m["h_name"], get_vazir_font(34), (255, 255, 255))
-        draw_rtl_at_x(draw, 345, cy - 22, m["a_name"], get_vazir_font(34), (255, 255, 255))
 
-        l_logo = fetch_logo_circle(m["a_name"], m["a_logo"], 94)
-        r_logo = fetch_logo_circle(m["h_name"], m["h_logo"], 94)
-        base.paste(l_logo, (152 - 47, cy - 47), l_logo)
-        base.paste(r_logo, (928 - 47, cy - 47), r_logo)
+        l_logo = fetch_logo_circle(m["a_name"], m["a_logo"], 80)
+        r_logo = fetch_logo_circle(m["h_name"], m["h_logo"], 80)
+        base.paste(l_logo, (156 - 40, cy - 40), l_logo)
+        base.paste(r_logo, (924 - 40, cy - 40), r_logo)
 
-    draw_rtl_centered(draw, 1825, footer_text, get_vazir_font(46), (20, 20, 20))
+        draw_sport_3d_text(base, 540, cy, f"{m['a_g']} - {m['h_g']}", 66, style="gold")
+        draw_sport_3d_text(base, 735, cy, m["h_name"], 36, style="white")
+        draw_sport_3d_text(base, 345, cy, m["a_name"], 36, style="white")
+
+    paint_clean_bottom_gold_bar(base, footer_text)
     return base
 
 
@@ -641,7 +765,6 @@ def refresh_daily_data_cache():
     now_greg = jdatetime.datetime.now(TEHRAN_TZ).togregorian()
     date_ddmmyyyy = now_greg.strftime("%d-%m-%Y")
 
-    # 1. اوقات شرعی شیراز
     try:
         url = f"https://api.aladhan.com/v1/timingsByCity/{date_ddmmyyyy}?city={CITY_NAME_EN}&country=Iran&method=7"
         t = requests.get(url, headers=HEADERS, timeout=8).json()["data"]["timings"]
@@ -655,7 +778,6 @@ def refresh_daily_data_cache():
     except Exception:
         pass
 
-    # 2. وضعیت آب و هوا + پیش بینی 4 زمانه (صبح، ظهر، عصر، شب)
     try:
         url = (
             f"https://api.open-meteo.com/v1/forecast?latitude={CITY_LAT}&longitude={CITY_LON}"
@@ -673,7 +795,12 @@ def refresh_daily_data_cache():
                 round(hourly_temps[21])
             )
         else:
-            periods = (round(daily["temperature_2m_min"][0] + 3), round(daily["temperature_2m_max"][0]), round(daily["temperature_2m_max"][0] - 3), round(daily["temperature_2m_min"][0]))
+            periods = (
+                round(daily["temperature_2m_min"][0] + 3),
+                round(daily["temperature_2m_max"][0]),
+                round(daily["temperature_2m_max"][0] - 3),
+                round(daily["temperature_2m_min"][0])
+            )
 
         code = cur.get("weather_code", 0)
         desc_map = {
@@ -694,7 +821,6 @@ def refresh_daily_data_cache():
     except Exception:
         pass
 
-    # 3. قیمت لحظه ای دلار، طلای 18 عیار و سکه امامی
     try:
         ts = int(time.time())
         r_json = requests.get(f"https://call1.tgju.org/ajax.json?rev={ts}", headers=HEADERS, timeout=8).json()
@@ -763,7 +889,6 @@ def register_and_check_match(state, matches_mem, lg_key, match_id, league_fa, is
     CACHE["leagues"][lg_key]["lines"].append(line_str)
     CACHE["leagues"][lg_key]["match_ids"].append(match_id)
 
-    # اگر بازی در حال حاضر زنده است، به بخش «فوتبال زنده در جریان امروز» اضافه کن
     if is_live:
         CACHE["live_match_ids"].append(match_id)
         CACHE["live_lines"].append(f"🏆 {league_fa}: {line_str}")
@@ -779,7 +904,6 @@ def register_and_check_match(state, matches_mem, lg_key, match_id, league_fa, is
     target_chat = get_target_chat_id(state)
     footer = state.get("footer_text", "گزارش زنده و نتایج فوتبال")
 
-    # ارسال خودکار عکس گل برای لیگ برتر و جام حذفی ایران
     if is_iran and is_live and (h_g > prev["h"] or a_g > prev["a"]):
         scorer = h_name if h_g > prev["h"] else a_name
         if target_chat:
@@ -787,7 +911,6 @@ def register_and_check_match(state, matches_mem, lg_key, match_id, league_fa, is
             send_telegram_photo(target_chat, img, f"🔴 گل برای {scorer}!\n{h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}")
         prev["h"], prev["a"] = h_g, a_g
 
-    # ارسال خودکار عکس پایان بازی با آمار کامل برای تمام لیگ ها
     if is_finished and not prev["ft"]:
         if target_chat:
             img = build_match_image(m_obj, footer_text=footer)
@@ -811,7 +934,6 @@ def check_all_football_free(state):
             "has_live": False
         }
 
-    # 1. بررسی همه بازی های زنده در جریان امروز در لیگ ایران و جام حذفی
     for day_offset in [0, -1, 1, -2, 2]:
         target_date = (now_greg + timedelta(days=day_offset)).strftime("%Y%m%d")
         is_today = (day_offset == 0)
@@ -848,7 +970,6 @@ def check_all_football_free(state):
         if found_iran:
             break
 
-    # 2. بررسی لیگ های معتبر اروپایی + استخراج گلزنان به فارسی
     espn_configs = [
         ("lg_eng", "eng.1", "لیگ برتر انگلیس"),
         ("lg_esp", "esp.1", "لالیگا اسپانیا"),
@@ -881,7 +1002,6 @@ def check_all_football_free(state):
                 h_g, a_g = int(home.get("score", 0) or 0), int(away.get("score", 0) or 0)
                 h_logo, a_logo = home["team"].get("logo", ""), away["team"].get("logo", "")
 
-                # استخراج نام گلزنان و ترجمه به فارسی
                 scorers_list = []
                 for det in comp.get("details", []):
                     if det.get("scoringPlay"):
@@ -922,7 +1042,7 @@ def send_telegram_photo(chat_id, img, caption=""):
     if not chat_id:
         return
     bio = io.BytesIO()
-    img.convert("RGB").save(bio, format="JPEG", quality=94)
+    img.convert("RGB").save(bio, format="JPEG", quality=95)
     bio.seek(0)
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     data = {"chat_id": chat_id, "caption": caption}
@@ -949,7 +1069,6 @@ def send_menu_keyboard(chat_id, text="✅ منوی ربات آماده است! �
 
 
 def build_league_selector_markup():
-    """ساخت منوی نتایج زنده شامل بخش اختصاصی «فوتبال های زنده در جریان امروز» + 5 لیگ + پوستر تجمیعی"""
     buttons = []
     live_count = len(CACHE["live_match_ids"])
     live_label = f"🔴 فوتبال های زنده در جریان امروز ({to_fa_digits(live_count)} بازی زنده)" if live_count > 0 else "🔴 فوتبال های زنده در جریان امروز"
@@ -969,7 +1088,7 @@ def build_league_selector_markup():
 def send_league_selection_question(chat_id, message_id=None):
     text = (
         "⚽ کدوم بخش یا لیگ مد نظرته؟\n\n"
-        "• برای دیدن تمامی بازی هایی که **همین لحظه زنده در جریان هستند** روی دکمه اول (🔴) بزنید.\n"
+        "• برای دیدن تمامی بازی هایی که همین لحظه زنده در جریان هستند روی دکمه اول (🔴) بزنید.\n"
         "• یا یکی از لیگ های زیر را انتخاب کنید:"
     )
     markup = build_league_selector_markup()
@@ -986,7 +1105,6 @@ def send_league_selection_question(chat_id, message_id=None):
 
 
 def send_live_now_matches(chat_id, message_id=None):
-    """نمایش بخش اختصاصی تمامی فوتبال های زنده در جریان امروز در یک جا"""
     live_ids = CACHE["live_match_ids"]
     live_lines = CACHE["live_lines"]
 
@@ -1078,7 +1196,6 @@ def send_specific_league_matches(chat_id, lg_key, message_id=None):
 
 
 def send_settings_menu(chat_id, state):
-    """منوی تنظیمات داخل تلگرام (مورد 15)"""
     footer = state.get("footer_text", "گزارش زنده و نتایج فوتبال")
     hour = state.get("morning_hour", 7)
     text = (
