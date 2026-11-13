@@ -463,7 +463,7 @@ def fetch_logo_circle(team_name_fa, fallback_url, diameter=166):
     return out
 
 
-def get_ match_detailed_stats_fa(m):
+def get_match_detailed_stats_fa(m):
     """استخراج آمار بازی و نام گلزنان به زبان کاملا فارسی"""
     h_name, a_name = m["h_name"], m["a_name"]
     h_g, a_g = int(m["h_g"]), int(m["a_g"])
