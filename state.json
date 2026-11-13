@@ -97,5 +97,8 @@
       "a": 2,
       "ft": true
     }
-  }
+  },
+  "footer_text": "⚽ نتایج زنده",
+  "morning_hour": 7,
+  "awaiting_input": ""
 }
