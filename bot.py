@@ -239,15 +239,10 @@ def to_fa_digits(val):
 
 
 def strip_emojis_for_image(text):
-    """حذف کاراکترهای ایموجی و پرچم که در فونت تصویر به صورت مربع خالی [][] چاپ می شوند"""
     return re.sub(r'[^\u0600-\u06FF0-9۰-۹a-zA-Z\s\|\-\:\.\،\/\(\)\%\+]', '', str(text)).strip()
 
 
 def draw_luxury_text(base_img, center_x, center_y, text, size, style="gold", use_display_font=False, max_width=None):
-    """
-    چاپ متن کاملا خوانا و لوکس در مرکز (center_x, center_y)
-    همراه با کوچک سازی خودکار سایز فونت در صورت طولانی بودن متن (تضمین عدم خروج از کادر)
-    """
     clean_text = to_fa_digits(strip_emojis_for_image(text))
     if not clean_text:
         return
@@ -255,7 +250,6 @@ def draw_luxury_text(base_img, center_x, center_y, text, size, style="gold", use
     dummy = ImageDraw.Draw(base_img)
     cur_size = size
 
-    # تنظیم خودکار سایز فونت تا متن هرگز از عرض مجاز کادر (max_width) بیرون نزند
     while cur_size > 16:
         font = get_display_font(cur_size) if use_display_font else get_vazir_font(cur_size)
         stroke_w = 0 if style in ("dark_emerald", "dark_charcoal", "warm_bronze") else max(2, cur_size // 18)
@@ -396,7 +390,7 @@ def to_persian_text(raw_name):
 
 
 # =====================================================================
-# 4. ساخت هر 5 پوستر استوری با تراز میلی متری لوگوها و کادر آمار
+# 4. ساخت هر 5 پوستر استوری
 # =====================================================================
 def get_persian_date():
     now = jdatetime.datetime.now(TEHRAN_TZ)
@@ -481,9 +475,11 @@ def build_weather_image():
     return base
 
 
-def fetch_logo_circle(team_name_fa, fallback_url, diameter=156):
+def fetch_logo_circle(team_name_fa, fallback_url, diameter=96, is_large_ring=False):
     """
-    برش فضای خالی اطراف لوگو و ساخت دایره دقیقا هم اندازه داخل حلقه طلایی قالب
+    ساخت لوگوی دایره ای:
+    - برای پوستر تجمیعی (5.jpg): همان طراحی قبلی (diameter=96)
+    - برای کارت پایان بازی (3.jpg) و پیش بازی (4.jpg): طراحی اختصاصی متناسب با دایره بزرگ طلایی (diameter=186)
     """
     url = fallback_url
     norm_name = team_name_fa.replace("\u200c", " ")
@@ -491,7 +487,7 @@ def fetch_logo_circle(team_name_fa, fallback_url, diameter=156):
         if k in norm_name:
             url = v
             break
-    cache_key = f"{url}_{diameter}_exact"
+    cache_key = f"{url}_{diameter}_{is_large_ring}"
     if cache_key in LOGO_RAM:
         return LOGO_RAM[cache_key]
 
@@ -506,7 +502,8 @@ def fetch_logo_circle(team_name_fa, fallback_url, diameter=156):
             if bbox:
                 raw = raw.crop(bbox)
 
-            target_size = int(diameter * 0.84)
+            scale_factor = 0.82 if is_large_ring else 0.84
+            target_size = int(diameter * scale_factor)
             raw.thumbnail((target_size, target_size), Image.Resampling.LANCZOS)
             logo_bg.paste(raw, ((diameter - raw.width) // 2, (diameter - raw.height) // 2), raw)
         except Exception:
@@ -516,6 +513,11 @@ def fetch_logo_circle(team_name_fa, fallback_url, diameter=156):
     ImageDraw.Draw(mask).ellipse((0, 0, diameter - 1, diameter - 1), fill=255)
     out = Image.new("RGBA", (diameter, diameter), (0, 0, 0, 0))
     out.paste(logo_bg, (0, 0), mask)
+
+    if is_large_ring:
+        # حاشیه داخلی طلایی-تیره منطبق بر لبه داخلی دایره بزرگ طلایی در پوسترهای 3 و 4
+        bdraw = ImageDraw.Draw(out)
+        bdraw.ellipse((1, 1, diameter - 2, diameter - 2), outline=(218, 182, 102, 255), width=4)
 
     LOGO_RAM[cache_key] = out
     return out
@@ -540,7 +542,6 @@ def paint_clean_bottom_gold_bar(base_img, footer_text):
 
 
 def get_match_detailed_stats_fa(m):
-    """استخراج آمار بازی و تقسیم خودکار گلزنان طولانی به 2 خط برای جلوگیری از خروج از کادر"""
     h_name, a_name = m["h_name"], m["a_name"]
     h_g, a_g = int(m["h_g"]), int(m["a_g"])
     scorers_list = m.get("scorers_list", [])
@@ -559,7 +560,6 @@ def get_match_detailed_stats_fa(m):
         if len(scorers_list) <= 2:
             scorer_lines = ["گلزنان: " + "، ".join(scorers_list)]
         else:
-            # شکستن لیست گلزنان طولانی به 2 خط کاملا متوازن داخل کادر
             mid_idx = (len(scorers_list) + 1) // 2
             line_a = "گلزنان: " + "، ".join(scorers_list[:mid_idx])
             line_b = "، ".join(scorers_list[mid_idx:6])
@@ -585,24 +585,24 @@ def get_match_detailed_stats_fa(m):
 
 
 def build_match_image(m, footer_text="گزارش زنده و نتایج فوتبال"):
-    """پوستر 3: گزارش و آمار کامل بازی با کادر آمار کاملا استاندارد و بدون بیرون زدگی"""
+    """پوستر 3: کارت پایان بازی با طراحی اختصاصی لوگوهای بزرگ (قطر 186) کاملا منطبق بر دایره طلایی"""
     base = TEMPLATES_RAM["t3"].copy()
 
     draw_luxury_text(base, 540, 236, m["league_title"], 44, style="white_crisp", use_display_font=True, max_width=520)
     draw_luxury_text(base, 540, 415, "گزارش و آمار کامل بازی", 76, style="gold", use_display_font=True, max_width=860)
 
-    # مختصات دقیق مرکز حلقه های طلایی در 3.jpg (چپ: 228, 900 | راست: 852, 900 | قطر داخلی: 156)
-    lx, ly, ld = 228, 900, 156
-    rx, ry, rd = 852, 900, 156
+    # مرکز و قطر دقیق دایره های بزرگ طلایی در 3.jpg
+    lx, ly, ld = 245, 916, 186
+    rx, ry, rd = 835, 916, 186
 
-    left_circle = fetch_logo_circle(m["a_name"], m["a_logo"], ld)
-    right_circle = fetch_logo_circle(m["h_name"], m["h_logo"], rd)
+    left_circle = fetch_logo_circle(m["a_name"], m["a_logo"], ld, is_large_ring=True)
+    right_circle = fetch_logo_circle(m["h_name"], m["h_logo"], rd, is_large_ring=True)
     base.paste(left_circle, (lx - ld // 2, ly - ld // 2), left_circle)
     base.paste(right_circle, (rx - rd // 2, ry - rd // 2), right_circle)
 
-    draw_luxury_text(base, 540, 895, f"{m['a_g']} - {m['h_g']}", 126, style="gold", use_display_font=True, max_width=320)
-    draw_luxury_text(base, lx, 1036, m["a_name"], 38, style="white_crisp", use_display_font=True, max_width=260)
-    draw_luxury_text(base, rx, 1036, m["h_name"], 38, style="white_crisp", use_display_font=True, max_width=260)
+    draw_luxury_text(base, 540, 912, f"{m['a_g']} - {m['h_g']}", 126, style="gold", use_display_font=True, max_width=320)
+    draw_luxury_text(base, lx, 1052, m["a_name"], 38, style="white_crisp", use_display_font=True, max_width=260)
+    draw_luxury_text(base, rx, 1052, m["h_name"], 38, style="white_crisp", use_display_font=True, max_width=260)
 
     scorer_lines, stat_poss, stat_shots, stat_corn = get_match_detailed_stats_fa(m)
 
@@ -618,7 +618,6 @@ def build_match_image(m, footer_text="گزارش زنده و نتایج فوتب
         draw_luxury_text(base, 540, 1445, stat_shots, 37, style="white_crisp", max_width=760)
         draw_luxury_text(base, 540, 1545, stat_corn, 37, style="white_crisp", max_width=760)
     else:
-        # حالت 2 خطی برای بازی های پرگل تا هیچ اسمی از کادر خارج نشود
         odraw.line([(200, 1318), (880, 1318)], fill=(215, 180, 105, 120), width=2)
         base = Image.alpha_composite(base, overlay)
         draw_luxury_text(base, 540, 1222, scorer_lines[0], 30, style="gold", max_width=760)
@@ -632,7 +631,7 @@ def build_match_image(m, footer_text="گزارش زنده و نتایج فوتب
 
 
 def build_h2h_matchday_image(m, footer_text="گزارش زنده و نتایج فوتبال"):
-    """پوستر 4: روز بازی و تقابل رو در رو با لوگوهای دقیق داخل حلقه طلایی"""
+    """پوستر 4: کادر پیش بازی و تقابل رو در رو با طراحی اختصاصی لوگوهای بزرگ (قطر 186) کاملا داخل دایره طلایی"""
     base = TEMPLATES_RAM["t4"].copy()
 
     h_name, a_name = m["h_name"], m["a_name"]
@@ -645,16 +644,17 @@ def build_h2h_matchday_image(m, footer_text="گزارش زنده و نتایج �
     draw_luxury_text(base, 540, 236, f"روز بازی | {m['league_fa']}", 44, style="white_crisp", use_display_font=True, max_width=520)
     draw_luxury_text(base, 540, 415, "پیش بازی و تقابل رو در رو", 74, style="gold", use_display_font=True, max_width=860)
 
-    lx, ly, ld = 228, 900, 156
-    rx, ry, rd = 852, 900, 156
+    # مرکز و قطر دقیق دایره های بزرگ طلایی در 4.jpg
+    lx, ly, ld = 244, 913, 186
+    rx, ry, rd = 836, 913, 186
 
-    left_circle = fetch_logo_circle(a_name, m["a_logo"], ld)
-    right_circle = fetch_logo_circle(h_name, m["h_logo"], rd)
+    left_circle = fetch_logo_circle(a_name, m["a_logo"], ld, is_large_ring=True)
+    right_circle = fetch_logo_circle(h_name, m["h_logo"], rd, is_large_ring=True)
     base.paste(left_circle, (lx - ld // 2, ly - ld // 2), left_circle)
     base.paste(right_circle, (rx - rd // 2, ry - rd // 2), right_circle)
 
-    draw_luxury_text(base, lx, 1036, a_name, 38, style="white_crisp", use_display_font=True, max_width=260)
-    draw_luxury_text(base, rx, 1036, h_name, 38, style="white_crisp", use_display_font=True, max_width=260)
+    draw_luxury_text(base, lx, 1048, a_name, 38, style="white_crisp", use_display_font=True, max_width=260)
+    draw_luxury_text(base, rx, 1048, h_name, 38, style="white_crisp", use_display_font=True, max_width=260)
 
     overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
     odraw = ImageDraw.Draw(overlay)
@@ -684,23 +684,20 @@ def build_h2h_matchday_image(m, footer_text="گزارش زنده و نتایج �
 
 
 def build_multi_match_image(matches_list, title_top="نتایج بازی های امروز", footer_text="گزارش زنده و نتایج فوتبال"):
-    """
-    پوستر 5: جمع بندی نتایج روز با مختصات دقیق هر 10 حلقه طلایی (گام عمودی دقیقا 200 پیکسل)
-    """
+    """پوستر 5: بدون تغییر (همان طراحی تایید شده)"""
     base = TEMPLATES_RAM["t5"].copy()
 
     draw_luxury_text(base, 540, 236, title_top, 44, style="white_crisp", use_display_font=True, max_width=500)
     draw_luxury_text(base, 540, 390, "جمع بندی نتایج روز", 76, style="gold", use_display_font=True, max_width=860)
 
-    # مختصات کالیبره شده 5 نوار و 10 دایره طلایی در 5.jpg (1080x1920)
     row_y_centers = [642, 842, 1042, 1242, 1442]
     lx, rx, diameter = 152, 928, 96
 
     for idx, m in enumerate(matches_list[:5]):
         cy = row_y_centers[idx]
 
-        l_logo = fetch_logo_circle(m["a_name"], m["a_logo"], diameter)
-        r_logo = fetch_logo_circle(m["h_name"], m["h_logo"], diameter)
+        l_logo = fetch_logo_circle(m["a_name"], m["a_logo"], diameter, is_large_ring=False)
+        r_logo = fetch_logo_circle(m["h_name"], m["h_logo"], diameter, is_large_ring=False)
         base.paste(l_logo, (lx - diameter // 2, cy - diameter // 2), l_logo)
         base.paste(r_logo, (rx - diameter // 2, cy - diameter // 2), r_logo)
 
