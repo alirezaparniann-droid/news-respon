@@ -26,11 +26,12 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Persian Nastaliq & Vazirmatn Fonts
+      - name: Install Calligraphic & Sports Persian Fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y libraqm0 libfribidi0 libharfbuzz0b fonts-vazirmatn wget
-          wget -q -O IranNastaliq.ttf "https://github.com/Nicolo24/IranNastaliq/raw/master/IranNastaliq.ttf" || true
+          sudo apt-get install -y libraqm0 libfribidi0 libharfbuzz0b fonts-vazirmatn fonts-hosny-amiri curl
+          curl -L -s -o Calligraphic.ttf "https://raw.githubusercontent.com/google/fonts/main/ofl/arefruqaa/ArefRuqaa-Bold.ttf"
+          curl -L -s -o SportFont.ttf "https://raw.githubusercontent.com/google/fonts/main/ofl/lalezar/Lalezar-Regular.ttf"
           pip install --upgrade Pillow requests jdatetime pytz
 
       - name: Run 24/7 Bot
