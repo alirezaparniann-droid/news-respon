@@ -3,8 +3,12 @@ import io
 import re
 import time
 import json
+import math
+import random
 import hashlib
+import tempfile
 import threading
+import subprocess
 import requests
 import jdatetime
 import pytz
@@ -173,6 +177,7 @@ CACHE = {
     "weather": {
         "temp": 16, "temp_int": 16, "max": 19, "min": 8,
         "wind": 4, "humidity": 42, "desc": "آسمان صاف",
+        "code": 0,
         "periods": (11, 19, 16, 9)
     },
     "market": ("در حال بروزرسانی", "در حال بروزرسانی", "در حال بروزرسانی"),
@@ -190,9 +195,12 @@ CACHE = {
 TEMPLATES_RAM = {}
 LOGO_RAM = {}
 
+# حافظه پیام های ارسال شده برای قابلیت «ویرایش درجا با ریپلای (مورد 13)» و «تبدیل به ویدیو (مورد 3)»
+SENT_POSTS_MEM = {}
+
 
 # =====================================================================
-# 2. موتور فونت خوانا و هوشمند (همراه با تنظیم خودکار اندازه متن داخل کادر)
+# 2. موتور فونت خوانا و هوشمند
 # =====================================================================
 def download_file_if_missing(filename, urls):
     if os.path.exists(filename) and os.path.getsize(filename) > 15000:
@@ -390,7 +398,7 @@ def to_persian_text(raw_name):
 
 
 # =====================================================================
-# 4. ساخت هر 5 پوستر استوری
+# 4. ساخت هر 5 پوستر استوری (با پشتیبانی از ویرایش درجا با ریپلای - مورد 13)
 # =====================================================================
 def get_persian_date():
     now = jdatetime.datetime.now(TEHRAN_TZ)
@@ -401,7 +409,8 @@ def get_persian_date():
     return f"{wd} {now.day} {months[now.month]} {now.year}", f"{now.day} {months[now.month]} {now.year}", now.day
 
 
-def build_morning_image():
+def build_morning_image(overrides=None):
+    overrides = overrides or {}
     full_date, _, day_num = get_persian_date()
     fajr, sunrise, dhuhr, maghrib = CACHE["prayers"]
     w = CACHE["weather"]
@@ -414,8 +423,11 @@ def build_morning_image():
     draw.line([(200, 790), (880, 790)], fill=(195, 150, 65, 180), width=3)
     draw.line([(200, 1050), (880, 1050)], fill=(195, 150, 65, 180), width=3)
 
-    draw_luxury_text(base, 540, 265, f"صبح بخیر {CITY_NAME_FA}", 86, style="title_gold", use_display_font=True, max_width=820)
-    draw_luxury_text(base, 540, 375, "تقویم و گزارش روزانه", 42, style="warm_bronze", max_width=820)
+    main_title = overrides.get("title", f"صبح بخیر {CITY_NAME_FA}")
+    sub_title = overrides.get("subtitle", "تقویم و گزارش روزانه")
+
+    draw_luxury_text(base, 540, 265, main_title, 86, style="title_gold", use_display_font=True, max_width=820)
+    draw_luxury_text(base, 540, 375, sub_title, 42, style="warm_bronze", max_width=820)
     draw_luxury_text(base, 540, 455, full_date, 52, style="dark_emerald", max_width=820)
 
     draw_luxury_text(base, 540, 575, f"اوقات شرعی به افق {CITY_NAME_FA}", 44, style="warm_bronze", max_width=820)
@@ -431,29 +443,42 @@ def build_morning_image():
     draw_luxury_text(base, 540, 1260, f"طلای ۱۸ عیار: {gold} ریال", 40, style="dark_charcoal", max_width=820)
     draw_luxury_text(base, 540, 1335, f"سکه امامی: {coin} ریال", 40, style="dark_charcoal", max_width=820)
 
-    hem1, hem2 = HAFEZ_POEMS[day_num % len(HAFEZ_POEMS)]
-    draw_luxury_text(base, 540, 1718, hem1, 34, style="dark_emerald", max_width=520)
-    draw_luxury_text(base, 540, 1785, hem2, 34, style="dark_emerald", max_width=520)
+    if "custom_line" in overrides:
+        parts = overrides["custom_line"].split("/")
+        hem1 = parts[0].strip()
+        hem2 = parts[1].strip() if len(parts) > 1 else ""
+    else:
+        hem1, hem2 = HAFEZ_POEMS[day_num % len(HAFEZ_POEMS)]
+
+    draw_luxury_text(base, 540, 1718 if hem2 else 1750, hem1, 34, style="dark_emerald", max_width=520)
+    if hem2:
+        draw_luxury_text(base, 540, 1785, hem2, 34, style="dark_emerald", max_width=520)
 
     return base
 
 
-def build_weather_image():
+def build_weather_image(overrides=None):
+    overrides = overrides or {}
     _, short_date, _ = get_persian_date()
     w = CACHE["weather"]
     p_morn, p_noon, p_eve, p_night = w.get("periods", (11, 19, 16, 9))
 
     base = TEMPLATES_RAM["t2"].copy()
+    main_title = overrides.get("title", f"وضعیت آب و هوای {CITY_NAME_FA}")
+    sky_desc = overrides.get("custom_line", w["desc"])
 
-    if not has_preprinted_weather_title(base):
-        draw_luxury_text(base, 540, 195, f"وضعیت آب و هوای {CITY_NAME_FA}", 84, style="gold", use_display_font=True, max_width=880)
+    if not has_preprinted_weather_title(base) or "title" in overrides:
+        if "title" in overrides and has_preprinted_weather_title(base):
+            od = ImageDraw.Draw(base)
+            od.rounded_rectangle([120, 110, 960, 275], radius=20, fill=(32, 26, 52, 255))
+        draw_luxury_text(base, 540, 195, main_title, 84, style="gold", use_display_font=True, max_width=880)
         date_cy = 345
     else:
         date_cy = 335
 
     draw_luxury_text(base, 540, date_cy, short_date, 58, style="white_crisp", max_width=500)
     draw_luxury_text(base, 350, 800, f"{w['temp_int']} درجه", 112, style="gold", use_display_font=True, max_width=450)
-    draw_luxury_text(base, 785, 985, w["desc"], 48, style="white_crisp", max_width=320)
+    draw_luxury_text(base, 785, 985, sky_desc, 48, style="white_crisp", max_width=320)
 
     crop_bar4 = base.crop((200, 1640, 880, 1730)).convert("RGB")
     avg_b = sum(sum(px) for px in crop_bar4.getdata()) / (len(list(crop_bar4.getdata())) * 3)
@@ -476,11 +501,6 @@ def build_weather_image():
 
 
 def fetch_logo_circle(team_name_fa, fallback_url, diameter=96, is_large_ring=False):
-    """
-    ساخت لوگوی دایره ای:
-    - برای پوستر تجمیعی (5.jpg): همان طراحی قبلی (diameter=96)
-    - برای کارت پایان بازی (3.jpg) و پیش بازی (4.jpg): طراحی اختصاصی متناسب با دایره بزرگ طلایی (diameter=186)
-    """
     url = fallback_url
     norm_name = team_name_fa.replace("\u200c", " ")
     for k, v in IRAN_LOGOS.items():
@@ -515,7 +535,6 @@ def fetch_logo_circle(team_name_fa, fallback_url, diameter=96, is_large_ring=Fal
     out.paste(logo_bg, (0, 0), mask)
 
     if is_large_ring:
-        # حاشیه داخلی طلایی-تیره منطبق بر لبه داخلی دایره بزرگ طلایی در پوسترهای 3 و 4
         bdraw = ImageDraw.Draw(out)
         bdraw.ellipse((1, 1, diameter - 2, diameter - 2), outline=(218, 182, 102, 255), width=4)
 
@@ -541,12 +560,15 @@ def paint_clean_bottom_gold_bar(base_img, footer_text):
     draw.text(((1080 - tw) / 2, 1852 - th / 2 - bbox[1]), clean_text, font=font, fill=(20, 18, 15, 255), direction="rtl", language="fa")
 
 
-def get_match_detailed_stats_fa(m):
+def get_match_detailed_stats_fa(m, overrides=None):
+    overrides = overrides or {}
     h_name, a_name = m["h_name"], m["a_name"]
     h_g, a_g = int(m["h_g"]), int(m["a_g"])
     scorers_list = m.get("scorers_list", [])
 
-    if not scorers_list:
+    if "custom_line" in overrides:
+        scorer_lines = [overrides["custom_line"]]
+    elif not scorers_list:
         if h_g + a_g == 0:
             scorer_lines = ["گلزنان بازی: بدون گل"]
         else:
@@ -584,14 +606,18 @@ def get_match_detailed_stats_fa(m):
     )
 
 
-def build_match_image(m, footer_text="گزارش زنده و نتایج فوتبال"):
-    """پوستر 3: کارت پایان بازی با طراحی اختصاصی لوگوهای بزرگ (قطر 186) کاملا منطبق بر دایره طلایی"""
+def build_match_image(m, footer_text="گزارش زنده و نتایج فوتبال", overrides=None):
+    overrides = overrides or {}
     base = TEMPLATES_RAM["t3"].copy()
 
-    draw_luxury_text(base, 540, 236, m["league_title"], 44, style="white_crisp", use_display_font=True, max_width=520)
-    draw_luxury_text(base, 540, 415, "گزارش و آمار کامل بازی", 76, style="gold", use_display_font=True, max_width=860)
+    top_badge = overrides.get("badge", m["league_title"])
+    main_title = overrides.get("title", "گزارش و آمار کامل بازی")
+    score_str = overrides.get("score", f"{m['a_g']} - {m['h_g']}")
+    final_footer = overrides.get("footer", footer_text)
 
-    # مرکز و قطر دقیق دایره های بزرگ طلایی در 3.jpg
+    draw_luxury_text(base, 540, 236, top_badge, 44, style="white_crisp", use_display_font=True, max_width=520)
+    draw_luxury_text(base, 540, 415, main_title, 76, style="gold", use_display_font=True, max_width=860)
+
     lx, ly, ld = 245, 916, 186
     rx, ry, rd = 835, 916, 186
 
@@ -600,11 +626,11 @@ def build_match_image(m, footer_text="گزارش زنده و نتایج فوتب
     base.paste(left_circle, (lx - ld // 2, ly - ld // 2), left_circle)
     base.paste(right_circle, (rx - rd // 2, ry - rd // 2), right_circle)
 
-    draw_luxury_text(base, 540, 912, f"{m['a_g']} - {m['h_g']}", 126, style="gold", use_display_font=True, max_width=320)
+    draw_luxury_text(base, 540, 912, score_str, 126, style="gold", use_display_font=True, max_width=320)
     draw_luxury_text(base, lx, 1052, m["a_name"], 38, style="white_crisp", use_display_font=True, max_width=260)
     draw_luxury_text(base, rx, 1052, m["h_name"], 38, style="white_crisp", use_display_font=True, max_width=260)
 
-    scorer_lines, stat_poss, stat_shots, stat_corn = get_match_detailed_stats_fa(m)
+    scorer_lines, stat_poss, stat_shots, stat_corn = get_match_detailed_stats_fa(m, overrides=overrides)
 
     overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
     odraw = ImageDraw.Draw(overlay)
@@ -626,12 +652,12 @@ def build_match_image(m, footer_text="گزارش زنده و نتایج فوتب
         draw_luxury_text(base, 540, 1462, stat_shots, 36, style="white_crisp", max_width=760)
         draw_luxury_text(base, 540, 1552, stat_corn, 36, style="white_crisp", max_width=760)
 
-    paint_clean_bottom_gold_bar(base, footer_text)
+    paint_clean_bottom_gold_bar(base, final_footer)
     return base
 
 
-def build_h2h_matchday_image(m, footer_text="گزارش زنده و نتایج فوتبال"):
-    """پوستر 4: کادر پیش بازی و تقابل رو در رو با طراحی اختصاصی لوگوهای بزرگ (قطر 186) کاملا داخل دایره طلایی"""
+def build_h2h_matchday_image(m, footer_text="گزارش زنده و نتایج فوتبال", overrides=None):
+    overrides = overrides or {}
     base = TEMPLATES_RAM["t4"].copy()
 
     h_name, a_name = m["h_name"], m["a_name"]
@@ -641,10 +667,13 @@ def build_h2h_matchday_image(m, footer_text="گزارش زنده و نتایج �
     a_wins = max(1, 10 - h_wins - draws)
     avg_goals = round(1.8 + ((seed % 12) / 10.0), 1)
 
-    draw_luxury_text(base, 540, 236, f"روز بازی | {m['league_fa']}", 44, style="white_crisp", use_display_font=True, max_width=520)
-    draw_luxury_text(base, 540, 415, "پیش بازی و تقابل رو در رو", 74, style="gold", use_display_font=True, max_width=860)
+    top_badge = overrides.get("badge", f"روز بازی | {m['league_fa']}")
+    main_title = overrides.get("title", "پیش بازی و تقابل رو در رو")
+    final_footer = overrides.get("footer", footer_text)
 
-    # مرکز و قطر دقیق دایره های بزرگ طلایی در 4.jpg
+    draw_luxury_text(base, 540, 236, top_badge, 44, style="white_crisp", use_display_font=True, max_width=520)
+    draw_luxury_text(base, 540, 415, main_title, 74, style="gold", use_display_font=True, max_width=860)
+
     lx, ly, ld = 244, 913, 186
     rx, ry, rd = 836, 913, 186
 
@@ -662,7 +691,8 @@ def build_h2h_matchday_image(m, footer_text="گزارش زنده و نتایج �
     odraw.line([(200, 1285), (880, 1285)], fill=(215, 180, 105, 120), width=2)
     base = Image.alpha_composite(base, overlay)
 
-    draw_luxury_text(base, 540, 1230, "آمار ۱۰ تقابل اخیر دو تیم", 44, style="gold", use_display_font=True, max_width=760)
+    box_header = overrides.get("custom_line", "آمار ۱۰ تقابل اخیر دو تیم")
+    draw_luxury_text(base, 540, 1230, box_header, 44, style="gold", use_display_font=True, max_width=760)
     draw_luxury_text(
         base, 540, 1345,
         f"برد {h_name}: {to_fa_digits(h_wins)}   |   مساوی: {to_fa_digits(draws)}   |   برد {a_name}: {to_fa_digits(a_wins)}",
@@ -679,16 +709,20 @@ def build_h2h_matchday_image(m, footer_text="گزارش زنده و نتایج �
         34, style="white_crisp", max_width=760
     )
 
-    paint_clean_bottom_gold_bar(base, footer_text)
+    paint_clean_bottom_gold_bar(base, final_footer)
     return base
 
 
-def build_multi_match_image(matches_list, title_top="نتایج بازی های امروز", footer_text="گزارش زنده و نتایج فوتبال"):
-    """پوستر 5: بدون تغییر (همان طراحی تایید شده)"""
+def build_multi_match_image(matches_list, title_top="نتایج بازی های امروز", footer_text="گزارش زنده و نتایج فوتبال", overrides=None):
+    overrides = overrides or {}
     base = TEMPLATES_RAM["t5"].copy()
 
-    draw_luxury_text(base, 540, 236, title_top, 44, style="white_crisp", use_display_font=True, max_width=500)
-    draw_luxury_text(base, 540, 390, "جمع بندی نتایج روز", 76, style="gold", use_display_font=True, max_width=860)
+    top_badge = overrides.get("badge", title_top)
+    main_title = overrides.get("title", "جمع بندی نتایج روز")
+    final_footer = overrides.get("footer", footer_text)
+
+    draw_luxury_text(base, 540, 236, top_badge, 44, style="white_crisp", use_display_font=True, max_width=500)
+    draw_luxury_text(base, 540, 390, main_title, 76, style="gold", use_display_font=True, max_width=860)
 
     row_y_centers = [642, 842, 1042, 1242, 1442]
     lx, rx, diameter = 152, 928, 96
@@ -705,12 +739,102 @@ def build_multi_match_image(matches_list, title_top="نتایج بازی های 
         draw_luxury_text(base, 735, cy, m["h_name"], 36, style="white_crisp", max_width=235)
         draw_luxury_text(base, 345, cy, m["a_name"], 36, style="white_crisp", max_width=235)
 
-    paint_clean_bottom_gold_bar(base, footer_text)
+    paint_clean_bottom_gold_bar(base, final_footer)
     return base
 
 
 # =====================================================================
-# 5. دریافت اطلاعات زنده (اوقات شرعی، هوای 4 زمانه، طلا، فوتبال و گلزنان)
+# 5. موتور ساخت استوری ویدیویی چندرسانه ای ترکیبی (مورد 3)
+# =====================================================================
+def generate_animated_story_mp4(static_img, mode="sparkle"):
+    """
+    تبدیل پوستر استوری به ویدیوی 4 ثانیه ای MP4 با افکت متحرک داخل قاب شیشه ای:
+    - mode="rain": انیمیشن بارش باران نقره ای-طلایی در روزهای بارانی
+    - mode="goal": افکت موج نئونی و ذرات آتشین طلایی هنگام گل و بازی ها
+    - mode="sparkle": ذرات نورانی طلایی معلق برای صبح بخیر و هوای صاف
+    """
+    base_rgba = static_img.convert("RGBA").resize(STORY_SIZE)
+    fps = 15
+    total_frames = 60  # 4 ثانیه
+
+    rng = random.Random(42)
+    particles = []
+    count = 65 if mode == "rain" else 45
+    for _ in range(count):
+        particles.append({
+            "x": rng.randint(60, 1020),
+            "y": rng.randint(100, 1820),
+            "speed": rng.randint(28, 48) if mode == "rain" else rng.randint(6, 16),
+            "size": rng.randint(3, 8),
+            "phase": rng.random() * math.pi * 2
+        })
+
+    tmp_dir = tempfile.mkdtemp()
+    out_mp4 = os.path.join(tmp_dir, "story.mp4")
+
+    try:
+        for f_idx in range(total_frames):
+            overlay = Image.new("RGBA", STORY_SIZE, (0, 0, 0, 0))
+            odraw = ImageDraw.Draw(overlay)
+            t_ratio = f_idx / float(total_frames)
+
+            # موج نئونی متحرک دور کادر اسکوربورد در حالت ورزشی
+            if mode == "goal":
+                pulse = int(95 + 85 * math.sin(t_ratio * math.pi * 4))
+                odraw.rounded_rectangle(
+                    [82, 700, 998, 1110],
+                    radius=34,
+                    outline=(255, 215, 110, pulse),
+                    width=6
+                )
+                sweep_x = int(120 + (840 * ((f_idx * 2) % total_frames) / float(total_frames)))
+                odraw.line([(sweep_x, 705), (sweep_x - 60, 1105)], fill=(255, 245, 200, 110), width=14)
+
+            for p in particles:
+                if mode == "rain":
+                    cur_y = (p["y"] + f_idx * p["speed"]) % 1750 + 80
+                    cur_x = (p["x"] - f_idx * 4) % 980 + 50
+                    odraw.line(
+                        [(cur_x, cur_y), (cur_x - 6, cur_y + 28)],
+                        fill=(200, 225, 255, 155),
+                        width=2
+                    )
+                else:
+                    cur_y = (p["y"] - f_idx * p["speed"]) % 1760 + 80
+                    cur_x = p["x"] + int(12 * math.sin(p["phase"] + f_idx * 0.15))
+                    alpha = int(130 + 115 * math.sin(p["phase"] + f_idx * 0.25))
+                    r = p["size"]
+                    odraw.ellipse(
+                        (cur_x - r, cur_y - r, cur_x + r, cur_y + r),
+                        fill=(255, 230, 145, max(30, min(245, alpha)))
+                    )
+
+            frame_img = Image.alpha_composite(base_rgba, overlay).convert("RGB")
+            frame_path = os.path.join(tmp_dir, f"f_{f_idx:03d}.jpg")
+            frame_img.save(frame_path, "JPEG", quality=90)
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-framerate", str(fps),
+            "-i", os.path.join(tmp_dir, "f_%03d.jpg"),
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            "-preset", "ultrafast",
+            "-crf", "23",
+            out_mp4
+        ]
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=35)
+        if os.path.exists(out_mp4) and os.path.getsize(out_mp4) > 5000:
+            with open(out_mp4, "rb") as f:
+                data = f.read()
+            return data
+    except Exception as e:
+        print("Video gen error:", e)
+    return None
+
+
+# =====================================================================
+# 6. دریافت اطلاعات زنده (اوقات شرعی، هوای 4 زمانه، طلا، فوتبال و گلزنان)
 # =====================================================================
 def load_state():
     if os.path.exists(STATE_FILE):
@@ -719,6 +843,7 @@ def load_state():
                 st = json.load(f)
                 st.setdefault("footer_text", "گزارش زنده و نتایج فوتبال")
                 st.setdefault("morning_hour", 7)
+                st.setdefault("matches", {})
                 return st
         except Exception:
             pass
@@ -799,6 +924,7 @@ def refresh_daily_data_cache():
             "wind": round(cur["wind_speed_10m"]),
             "humidity": round(cur["relative_humidity_2m"]),
             "desc": desc_map.get(code, "آسمان صاف و معتدل"),
+            "code": code,
             "periods": periods
         }
     except Exception:
@@ -832,6 +958,103 @@ def refresh_daily_data_cache():
             CACHE["market"] = (usd, gold, coin)
     except Exception:
         pass
+
+
+# =====================================================================
+# 7. ارتباط با تلگرام + پوستر خودترمیم شونده (مورد 5) + ریپلای ادیت (مورد 13)
+# =====================================================================
+def setup_bot_commands():
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setMyCommands"
+    commands = [
+        {"command": "morning", "description": "🌞 صبح بخیر (شرعیات، طلا و حافظ)"},
+        {"command": "weather", "description": "⛅ وضعیت آب و هوا (۴ زمانه)"},
+        {"command": "football", "description": "⚽ نتایج زنده و پوستر بازی ها"},
+        {"command": "settings", "description": "⚙ تنظیمات ربات"}
+    ]
+    try:
+        requests.post(url, json={"commands": commands}, timeout=10)
+    except Exception:
+        pass
+
+
+def remember_sent_post(chat_id, message_id, meta):
+    if message_id:
+        SENT_POSTS_MEM[f"{chat_id}_{message_id}"] = meta
+
+
+def send_telegram_photo(chat_id, img, caption="", inline_kb=None, post_meta=None):
+    """ارسال عکس به تلگرام و بازگرداندن message_id برای قابلیت خودترمیم شوندگی و ویرایش درجا"""
+    if not chat_id:
+        return None
+    bio = io.BytesIO()
+    img.convert("RGB").save(bio, format="JPEG", quality=95)
+    bio.seek(0)
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    data = {"chat_id": chat_id, "caption": caption}
+    if inline_kb:
+        data["reply_markup"] = json.dumps({"inline_keyboard": inline_kb})
+    elif not str(chat_id).startswith("@") and not str(chat_id).startswith("-"):
+        data["reply_markup"] = BOT_MENU_KEYBOARD
+
+    try:
+        r = requests.post(url, data=data, files={"photo": ("story.jpg", bio, "image/jpeg")}, timeout=20).json()
+        msg_id = r.get("result", {}).get("message_id")
+        if msg_id and post_meta:
+            remember_sent_post(chat_id, msg_id, post_meta)
+        return msg_id
+    except Exception as e:
+        print("Send photo error:", e)
+        return None
+
+
+def edit_telegram_photo_in_place(chat_id, message_id, img, caption="", inline_kb=None, post_meta=None):
+    """
+    مورد 5 و مورد 13: ویرایش و جایگزینی زنده همان عکس قبلی داخل تلگرام بدون ارسال پست تکراری!
+    """
+    if not chat_id or not message_id:
+        return False
+    bio = io.BytesIO()
+    img.convert("RGB").save(bio, format="JPEG", quality=95)
+    bio.seek(0)
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageMedia"
+    media_Obj = {
+        "type": "photo",
+        "media": "attach://photo",
+        "caption": caption
+    }
+    data = {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "media": json.dumps(media_Obj)
+    }
+    if inline_kb:
+        data["reply_markup"] = json.dumps({"inline_keyboard": inline_kb})
+
+    try:
+        r = requests.post(url, data=data, files={"photo": ("story.jpg", bio, "image/jpeg")}, timeout=20).json()
+        if r.get("ok"):
+            if post_meta:
+                remember_sent_post(chat_id, message_id, post_meta)
+            return True
+    except Exception as e:
+        print("Edit photo in place error:", e)
+    return False
+
+
+def send_telegram_video(chat_id, video_bytes, caption=""):
+    if not chat_id or not video_bytes:
+        return
+    bio = io.BytesIO(video_bytes)
+    bio.seek(0)
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendVideo"
+    data = {"chat_id": chat_id, "caption": caption, "supports_streaming": True}
+    if not str(chat_id).startswith("@") and not str(chat_id).startswith("-"):
+        data["reply_markup"] = BOT_MENU_KEYBOARD
+    try:
+        requests.post(url, data=data, files={"video": ("story.mp4", bio, "video/mp4")}, timeout=35)
+    except Exception as e:
+        print("Send video error:", e)
 
 
 def register_and_check_match(state, matches_mem, lg_key, match_id, league_fa, is_iran, h_name, a_name, h_g, a_g, h_logo, a_logo, is_live, is_finished, minute_str="", scorers_list=None, allow_auto_alert=True):
@@ -880,24 +1103,48 @@ def register_and_check_match(state, matches_mem, lg_key, match_id, league_fa, is
         return
 
     if match_id not in matches_mem:
-        matches_mem[match_id] = {"h": h_g, "a": a_g, "ft": is_finished}
+        matches_mem[match_id] = {"h": h_g, "a": a_g, "ft": is_finished, "msg_id": None}
         return
 
     prev = matches_mem[match_id]
     target_chat = get_target_chat_id(state)
     footer = state.get("footer_text", "گزارش زنده و نتایج فوتبال")
 
+    # الف) گل جدید در لیگ برتر و جام حذفی ایران (با سیستم خودترمیم شونده مورد 5)
     if is_iran and is_live and (h_g > prev["h"] or a_g > prev["a"]):
         scorer = h_name if h_g > prev["h"] else a_name
         if target_chat:
             img = build_match_image(m_obj, footer_text=footer)
-            send_telegram_photo(target_chat, img, f"🔴 گل برای {scorer}!\n{h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}")
+            caption = (
+                f"🔴 زنده | گل برای {scorer}!\n"
+                f"⚽ {h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}\n"
+                "🔄 (این پوستر با هر گل به صورت خودکار آپدیت می شود)"
+            )
+            kb = [[{"text": "🎬 دریافت استوری ویدیویی متحرک (MP4)", "callback_data": f"mkvid_match_{match_id}"}]]
+            meta = {"type": "match", "mid": match_id, "overrides": {}, "caption": caption}
+
+            edited = False
+            if prev.get("msg_id"):
+                edited = edit_telegram_photo_in_place(target_chat, prev["msg_id"], img, caption=caption, inline_kb=kb, post_meta=meta)
+            if not edited:
+                new_mid = send_telegram_photo(target_chat, img, caption=caption, inline_kb=kb, post_meta=meta)
+                prev["msg_id"] = new_mid
         prev["h"], prev["a"] = h_g, a_g
 
+    # ب) پایان بازی برای تمام لیگ ها (اگر از قبل پست زنده داشت، همان پست را به نتیجه نهایی آپدیت کن!)
     if is_finished and not prev["ft"]:
         if target_chat:
             img = build_match_image(m_obj, footer_text=footer)
-            send_telegram_photo(target_chat, img, f"🏁 پایان بازی ({league_fa})\n{h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}")
+            caption = f"🏁 پایان بازی ({league_fa})\n⚽ {h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}"
+            kb = [[{"text": "🎬 دریافت استوری ویدیویی متحرک (MP4)", "callback_data": f"mkvid_match_{match_id}"}]]
+            meta = {"type": "match", "mid": match_id, "overrides": {}, "caption": caption}
+
+            edited = False
+            if prev.get("msg_id"):
+                edited = edit_telegram_photo_in_place(target_chat, prev["msg_id"], img, caption=caption, inline_kb=kb, post_meta=meta)
+            if not edited:
+                new_mid = send_telegram_photo(target_chat, img, caption=caption, inline_kb=kb, post_meta=meta)
+                prev["msg_id"] = new_mid
         prev["ft"] = True
         prev["h"], prev["a"] = h_g, a_g
 
@@ -1004,38 +1251,8 @@ def check_all_football_free(state):
 
 
 # =====================================================================
-# 6. ارتباط با تلگرام، بخش «فوتبال زنده امروز» و منوی تنظیمات
+# 8. منوها، مدیریت کلیک ها و ویرایش درجا با ریپلای (مورد 13)
 # =====================================================================
-def setup_bot_commands():
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setMyCommands"
-    commands = [
-        {"command": "morning", "description": "🌞 صبح بخیر (شرعیات، طلا و حافظ)"},
-        {"command": "weather", "description": "⛅ وضعیت آب و هوا (۴ زمانه)"},
-        {"command": "football", "description": "⚽ نتایج زنده و پوستر بازی ها"},
-        {"command": "settings", "description": "⚙ تنظیمات ربات"}
-    ]
-    try:
-        requests.post(url, json={"commands": commands}, timeout=10)
-    except Exception:
-        pass
-
-
-def send_telegram_photo(chat_id, img, caption=""):
-    if not chat_id:
-        return
-    bio = io.BytesIO()
-    img.convert("RGB").save(bio, format="JPEG", quality=95)
-    bio.seek(0)
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-    data = {"chat_id": chat_id, "caption": caption}
-    if not str(chat_id).startswith("@") and not str(chat_id).startswith("-"):
-        data["reply_markup"] = BOT_MENU_KEYBOARD
-    try:
-        requests.post(url, data=data, files={"photo": ("story.jpg", bio, "image/jpeg")}, timeout=20)
-    except Exception as e:
-        print("Send photo error:", e)
-
-
 def send_menu_keyboard(chat_id, text="✅ منوی ربات آماده است! از دکمه های پایین صفحه انتخاب کنید:"):
     if not chat_id:
         return
@@ -1094,7 +1311,7 @@ def send_live_now_matches(chat_id, message_id=None):
         text = (
             "🔴 فهرست تمامی بازی های زنده در جریان امروز:\n\n"
             + "\n".join(live_lines)
-            + "\n\n👇 روی هر بازی زنده که می خواهید بزنید تا بلافاصله پوستر آن ساخته و ارسال شود:"
+            + "\n\n👇 روی هر بازی زنده بزنید تا پوستر خودترمیم شونده (🔄) یا ویدیوی متحرک آن ارسال شود:"
         )
     else:
         text = (
@@ -1109,7 +1326,7 @@ def send_live_now_matches(chat_id, message_id=None):
         if not m:
             continue
         buttons.append([
-            {"text": f"📸 پوستر زنده: {m['h_name']} {to_fa_digits(m['h_g'])}-{to_fa_digits(m['a_g'])} {m['a_name']}", "callback_data": f"mkimg_{mid}"}
+            {"text": f"📸 پوستر زنده (🔄): {m['h_name']} {to_fa_digits(m['h_g'])}-{to_fa_digits(m['a_g'])} {m['a_name']}", "callback_data": f"mkimg_{mid}"}
         ])
 
     buttons.append([{"text": "🔙 بازگشت به منوی لیگ ها", "callback_data": "back_leagues"}])
@@ -1138,12 +1355,15 @@ def send_specific_league_matches(chat_id, lg_key, message_id=None):
 
     if lines:
         matches_text = "\n".join(lines)
-        legend = "\n\nراهنما: 🔴 زنده | 🏁 پایان بازی | ⏰ در انتظار شروع"
+        legend = (
+            "\n\nراهنما: 🔴 زنده | 🏁 پایان بازی | ⏰ در انتظار شروع\n"
+            "💡 نکته: روی هر پوستری که ربات می فرستد می توانید Reply بزنید (مثلا `تیتر: پیروزی دراماتیک`) تا همان عکس درجا ویرایش شود!"
+        )
         text = (
             f"🏆 گزارش بازی های {title}:\n\n"
             f"{matches_text}"
             f"{legend}\n"
-            "👇 برای هر بازی می توانید «📸 پوستر نتیجه و آمار» یا «⚔ پوستر تقابل رو در رو» دریافت کنید:"
+            "👇 انتخاب نوع پوستر برای هر بازی:"
         )
     else:
         text = f"🏆 {title}\n\n⚽ در حال حاضر بازی فعالی برای این لیگ ثبت نشده است."
@@ -1181,13 +1401,18 @@ def send_settings_menu(chat_id, state):
     footer = state.get("footer_text", "گزارش زنده و نتایج فوتبال")
     hour = state.get("morning_hour", 7)
     text = (
-        "⚙ تنظیمات ربات استوری ساز:\n\n"
+        "⚙ تنظیمات و راهنمای امکانات ویژه ربات:\n\n"
         f"📝 امضای پایین پوسترهای فوتبال: «{footer}»\n"
         f"⏰ ساعت ارسال خودکار صبحگاهی: ساعت {to_fa_digits(hour)}:۰۰ صبح\n\n"
-        "👇 برای تغییر هر مورد روی دکمه مربوطه بزنید:"
+        "✨ راهنمای ویرایش درجا با ریپلای (مورد ۱۳):\n"
+        "روی هر عکس ارسالی ربات در تلگرام Reply بزنید و یکی از دستورات زیر را بنویسید تا همان پست بلافاصله ادیت شود:\n"
+        "• `تیتر: پیروزی بزرگ در دقیقه ۹۰`\n"
+        "• `امضا: آخرین خبرهای ورزش`\n"
+        "• `نتیجه: ۳ - ۱`\n"
+        "• `متن: گلزنان: مهدی طارمی (۸۸)`"
     )
     buttons = [
-        [{"text": "✏ تغییر متن امضای پایین پوسترها", "callback_data": "set_footer"}],
+        [{"text": "✏ تغییر دائمی امضای پایین پوسترها", "callback_data": "set_footer"}],
         [
             {"text": "⏰ ارسال صبحگاهی: ۶ صبح", "callback_data": "sethour_6"},
             {"text": "⏰ ارسال صبحگاهی: ۷ صبح", "callback_data": "sethour_7"},
@@ -1206,8 +1431,72 @@ def answer_callback(callback_id, text=""):
         pass
 
 
+def Rebuild_post_from_meta(meta, state):
+    """بازسازی تصویر بر اساس متادیتا و تغییرات ریپلای کاربر"""
+    ptype = meta.get("type")
+    overrides = meta.get("overrides", {})
+    footer = state.get("footer_text", "گزارش زنده و نتایج فوتبال")
+
+    if ptype == "morning":
+        return build_morning_image(overrides=overrides)
+    elif ptype == "weather":
+        return build_weather_image(overrides=overrides)
+    elif ptype == "match":
+        m = CACHE["matches_by_id"].get(meta.get("mid"))
+        if m:
+            return build_match_image(m, footer_text=footer, overrides=overrides)
+    elif ptype == "h2h":
+        m = CACHE["matches_by_id"].get(meta.get("mid"))
+        if m:
+            return build_h2h_matchday_image(m, footer_text=footer, overrides=overrides)
+    elif ptype == "multi":
+        mids = meta.get("mids", [])
+        selected = [CACHE["matches_by_id"][x] for x in mids if x in CACHE["matches_by_id"]]
+        if selected:
+            return build_multi_match_image(selected, title_top=meta.get("title_top", "نتایج بازی ها"), footer_text=footer, overrides=overrides)
+    return None
+
+
+def handle_reply_instant_edit(chat_id, reply_msg_id, user_text, state):
+    """
+    مورد 13: تصحیح و ویرایش درجای همان عکس در تلگرام با ریپلای زدن روی عکس
+    """
+    key = f"{chat_id}_{reply_msg_id}"
+    meta = SENT_POSTS_MEM.get(key)
+    if not meta:
+        return False
+
+    overrides = meta.setdefault("overrides", {})
+    for raw_line in user_text.strip().split("\n"):
+        line = raw_line.strip()
+        if ":" in line:
+            k, val = line.split(":", 1)
+            k, val = k.strip(), val.strip()
+            if k in ("تیتر", "عنوان"):
+                overrides["title"] = val
+            elif k in ("سربرگ", "لیگ"):
+                overrides["badge"] = val
+            elif k in ("امضا", "فوتر", "پایین"):
+                overrides["footer"] = val
+            elif k in ("نتیجه", "اسکور"):
+                overrides["score"] = val
+            elif k in ("متن", "گلزنان", "شعر", "توضیح"):
+                overrides["custom_line"] = val
+            else:
+                overrides["title"] = line
+        else:
+            overrides["title"] = line
+
+    new_img = Rebuild_post_from_meta(meta, state)
+    if new_img:
+        kb = meta.get("kb")
+        edit_telegram_photo_in_place(chat_id, reply_msg_id, new_img, caption=meta.get("caption", ""), inline_kb=kb, post_meta=meta)
+        return True
+    return False
+
+
 # =====================================================================
-# 7. اجرای 24 ساعته در پس زمینه و پاسخگویی زیر 3 ثانیه
+# 9. اجرای 24 ساعته در پس زمینه
 # =====================================================================
 def background_worker(state):
     while True:
@@ -1222,8 +1511,13 @@ def background_worker(state):
 
             if now_tehran.hour == morning_hour and state.get("last_morning_date") != today_gregorian and target_chat:
                 refresh_daily_data_cache()
-                send_telegram_photo(target_chat, build_morning_image(), "🌞 صبح بخیر | تقویم، اوقات شرعی، نبض بازار و تفال حافظ")
-                send_telegram_photo(target_chat, build_weather_image(), "⛅ وضعیت آب و هوا و پیش بینی ۴ زمانه امروز")
+                kb_m = [[{"text": "🎬 دریافت نسخه ویدیویی متحرک (MP4)", "callback_data": "mkvid_morning_0"}]]
+                cap_m = "🌞 صبح بخیر | تقویم، اوقات شرعی، نبض بازار و تفال حافظ"
+                send_telegram_photo(target_chat, build_morning_image(), cap_m, inline_kb=kb_m, post_meta={"type": "morning", "overrides": {}, "caption": cap_m, "kb": kb_m})
+
+                kb_w = [[{"text": "🎬 دریافت نسخه ویدیویی متحرک (MP4)", "callback_data": "mkvid_weather_0"}]]
+                cap_w = "⛅ وضعیت آب و هوا و پیش بینی ۴ زمانه امروز"
+                send_telegram_photo(target_chat, build_weather_image(), cap_w, inline_kb=kb_w, post_meta={"type": "weather", "overrides": {}, "caption": cap_w, "kb": kb_w})
                 state["last_morning_date"] = today_gregorian
 
             save_state(state)
@@ -1232,8 +1526,14 @@ def background_worker(state):
         time.sleep(60)
 
 
-def handle_user_request(chat_id, text, state):
+def handle_user_request(chat_id, text, state, reply_to_msg_id=None):
     t = text.strip()
+
+    # اگر کاربر روی یکی از عکس های ربات ریپلای زده است، همان عکس را درجا ویرایش کن (مورد 13)
+    if reply_to_msg_id:
+        if handle_reply_instant_edit(chat_id, reply_to_msg_id, t, state):
+            return
+
     if state.get("awaiting_input") == "footer":
         state["footer_text"] = t
         state["awaiting_input"] = ""
@@ -1243,14 +1543,22 @@ def handle_user_request(chat_id, text, state):
 
     if "صبح بخیر" in t or t == "/morning":
         img = build_morning_image()
-        send_telegram_photo(chat_id, img, "🌞 صبح بخیر | تقویم، اوقات شرعی، نبض بازار و تفال حافظ")
+        kb = [[{"text": "🎬 دریافت استوری ویدیویی متحرک (MP4)", "callback_data": "mkvid_morning_0"}]]
+        cap = "🌞 صبح بخیر | تقویم، اوقات شرعی، نبض بازار و تفال حافظ\n💡 (برای تغییر هر متن، روی همین عکس Reply بزنید)"
+        send_telegram_photo(chat_id, img, cap, inline_kb=kb, post_meta={"type": "morning", "overrides": {}, "caption": cap, "kb": kb})
+
     elif "وضعیت هوا" in t or "آب و هوا" in t or t == "/weather":
         img = build_weather_image()
-        send_telegram_photo(chat_id, img, "⛅ وضعیت لحظه ای آب و هوا و پیش بینی ۴ زمانه")
+        kb = [[{"text": "🎬 دریافت استوری ویدیویی متحرک (MP4)", "callback_data": "mkvid_weather_0"}]]
+        cap = "⛅ وضعیت لحظه ای آب و هوا و پیش بینی ۴ زمانه\n💡 (برای تغییر هر متن، روی همین عکس Reply بزنید)"
+        send_telegram_photo(chat_id, img, cap, inline_kb=kb, post_meta={"type": "weather", "overrides": {}, "caption": cap, "kb": kb})
+
     elif "نتایج زنده" in t or "فوتبال" in t or t == "/football":
         send_league_selection_question(chat_id)
+
     elif "تنظیمات" in t or t == "/settings":
         send_settings_menu(chat_id, state)
+
     else:
         send_menu_keyboard(chat_id, "👇 لطفا یکی از کلیدهای منوی پایین صفحه را انتخاب کنید:")
 
@@ -1277,8 +1585,39 @@ def handle_callback_query(chat_id, message_id, cb_id, data, state):
         m = CACHE["matches_by_id"].get(mid)
         if m:
             img = build_match_image(m, footer_text=footer)
-            caption = f"{m['status_emoji']} {m['status_label']} ({m['league_fa']})\n⚽ {m['h_name']} {to_fa_digits(m['h_g'])} - {to_fa_digits(m['a_g'])} {m['a_name']}"
-            send_telegram_photo(chat_id, img, caption)
+            caption = (
+                f"{m['status_emoji']} {m['status_label']} ({m['league_fa']})\n"
+                f"⚽ {m['h_name']} {to_fa_digits(m['h_g'])} - {to_fa_digits(m['a_g'])} {m['a_name']}"
+            )
+            kb = [
+                [{"text": "🔄 بروزرسانی زنده همین پوستر", "callback_data": f"refresh_{mid}"}],
+                [{"text": "🎬 دریافت استوری ویدیویی متحرک (MP4)", "callback_data": f"mkvid_match_{mid}"}]
+            ]
+            meta = {"type": "match", "mid": mid, "overrides": {}, "caption": caption, "kb": kb}
+            sent_id = send_telegram_photo(chat_id, img, caption=caption, inline_kb=kb, post_meta=meta)
+            # ثبت شناسه پیام برای آپدیت خودکار در صورت تغییر نتیجه (مورد 5)
+            state.setdefault("matches", {}).setdefault(mid, {"h": m["h_g"], "a": m["a_g"], "ft": m["is_finished"]})["msg_id"] = sent_id
+
+    elif data.startswith("refresh_"):
+        mid = data.replace("refresh_", "", 1)
+        answer_callback(cb_id, "🔄 در حال بروزرسانی درجا...")
+        check_all_football_free(state)
+        m = CACHE["matches_by_id"].get(mid)
+        if m:
+            key = f"{chat_id}_{message_id}"
+            meta = SENT_POSTS_MEM.get(key, {"type": "match", "mid": mid, "overrides": {}})
+            img = build_match_image(m, footer_text=footer, overrides=meta.get("overrides"))
+            caption = (
+                f"{m['status_emoji']} {m['status_label']} ({m['league_fa']})\n"
+                f"⚽ {m['h_name']} {to_fa_digits(m['h_g'])} - {to_fa_digits(m['a_g'])} {m['a_name']}"
+            )
+            kb = [
+                [{"text": "🔄 بروزرسانی زنده همین پوستر", "callback_data": f"refresh_{mid}"}],
+                [{"text": "🎬 دریافت استوری ویدیویی متحرک (MP4)", "callback_data": f"mkvid_match_{mid}"}]
+            ]
+            meta["caption"] = caption
+            meta["kb"] = kb
+            edit_telegram_photo_in_place(chat_id, message_id, img, caption=caption, inline_kb=kb, post_meta=meta)
 
     elif data.startswith("mkh2h_"):
         answer_callback(cb_id, "⚔ در حال ساخت پوستر روز بازی و تقابل رو در رو...")
@@ -1287,7 +1626,9 @@ def handle_callback_query(chat_id, message_id, cb_id, data, state):
         if m:
             img = build_h2h_matchday_image(m, footer_text=footer)
             caption = f"⚔ پیش بازی و تقابل رو در رو ({m['league_fa']})\n⚽ {m['h_name']} مقابل {m['a_name']}"
-            send_telegram_photo(chat_id, img, caption)
+            kb = [[{"text": "🎬 دریافت استوری ویدیویی متحرک (MP4)", "callback_data": f"mkvid_h2h_{mid}"}]]
+            meta = {"type": "h2h", "mid": mid, "overrides": {}, "caption": caption, "kb": kb}
+            send_telegram_photo(chat_id, img, caption=caption, inline_kb=kb, post_meta=meta)
 
     elif data == "mk_multi_today" or data.startswith("mkmulti_"):
         answer_callback(cb_id, "📊 در حال ساخت پوستر تجمیعی نتایج...")
@@ -1299,17 +1640,57 @@ def handle_callback_query(chat_id, message_id, cb_id, data, state):
             for x in all_ids:
                 if x not in seen:
                     seen.append(x)
-            selected = [CACHE["matches_by_id"][x] for x in seen[:5] if x in CACHE["matches_by_id"]]
+            mids = [x for x in seen[:5] if x in CACHE["matches_by_id"]]
             title_top = "نتایج بازی های امروز"
         else:
             lg_key = data.replace("mkmulti_", "", 1)
             lg_info = CACHE["leagues"].get(lg_key, {})
-            selected = [CACHE["matches_by_id"][x] for x in lg_info.get("match_ids", [])[:5] if x in CACHE["matches_by_id"]]
+            mids = [x for x in lg_info.get("match_ids", [])[:5] if x in CACHE["matches_by_id"]]
             title_top = lg_info.get("title", "نتایج بازی ها")
 
+        selected = [CACHE["matches_by_id"][x] for x in mids]
         if selected:
             img = build_multi_match_image(selected, title_top=title_top, footer_text=footer)
-            send_telegram_photo(chat_id, img, f"📊 جمع بندی نتایج ({title_top})")
+            caption = f"📊 جمع بندی نتایج ({title_top})"
+            kb = [[{"text": "🎬 دریافت استوری ویدیویی متحرک (MP4)", "callback_data": "mkvid_multi_0"}]]
+            meta = {"type": "multi", "mids": mids, "title_top": title_top, "overrides": {}, "caption": caption, "kb": kb}
+            send_telegram_photo(chat_id, img, caption=caption, inline_kb=kb, post_meta=meta)
+
+    # مورد 3: ساخت و ارسال استوری ویدیویی متحرک MP4
+    elif data.startswith("mkvid_"):
+        answer_callback(cb_id, "🎬 در حال رندر استوری ویدیویی متحرک (حدود ۵ ثانیه)...")
+        key = f"{chat_id}_{message_id}"
+        meta = SENT_POSTS_MEM.get(key)
+        if meta:
+            static_img = Rebuild_post_from_meta(meta, state)
+            ptype = meta.get("type")
+        else:
+            parts = data.split("_", 2)
+            ptype = parts[1]
+            arg = parts[2] if len(parts) > 2 else ""
+            if ptype == "morning":
+                static_img = build_morning_image()
+            elif ptype == "weather":
+                static_img = build_weather_image()
+            elif ptype == "match" and arg in CACHE["matches_by_id"]:
+                static_img = build_match_image(CACHE["matches_by_id"][arg], footer_text=footer)
+            elif ptype == "h2h" and arg in CACHE["matches_by_id"]:
+                static_img = build_h2h_matchday_image(CACHE["matches_by_id"][arg], footer_text=footer)
+            else:
+                static_img = None
+
+        if static_img:
+            w_code = CACHE["weather"].get("code", 0)
+            if ptype == "weather" and w_code in (51, 61, 63, 65, 80, 95):
+                anim_mode = "rain"
+            elif ptype in ("match", "h2h", "multi"):
+                anim_mode = "goal"
+            else:
+                anim_mode = "sparkle"
+
+            mp4_bytes = generate_animated_story_mp4(static_img, mode=anim_mode)
+            if mp4_bytes:
+                send_telegram_video(chat_id, mp4_bytes, caption="🎬 نسخه استوری ویدیویی متحرک (آماده انتشار در استوری)")
 
     elif data == "set_footer":
         answer_callback(cb_id)
@@ -1352,12 +1733,14 @@ if __name__ == "__main__":
                 offset = upd["update_id"] + 1
 
                 if "message" in upd and "text" in upd["message"]:
-                    cid = upd["message"]["chat"]["id"]
-                    txt = upd["message"]["text"]
+                    msg = upd["message"]
+                    cid = msg["chat"]["id"]
+                    txt = msg["text"]
+                    reply_id = msg.get("reply_to_message", {}).get("message_id")
                     if not state.get("owner_chat_id"):
                         state["owner_chat_id"] = cid
                         save_state(state)
-                    threading.Thread(target=handle_user_request, args=(cid, txt, state), daemon=True).start()
+                    threading.Thread(target=handle_user_request, args=(cid, txt, state, reply_id), daemon=True).start()
 
                 elif "callback_query" in upd:
                     cb = upd["callback_query"]
