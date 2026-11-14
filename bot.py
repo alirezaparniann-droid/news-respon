@@ -6,7 +6,6 @@ import json
 import math
 import random
 import hashlib
-import tempfile
 import threading
 import subprocess
 import requests
@@ -71,6 +70,17 @@ HAFEZ_POEMS = [
     ("زلف آشفته و خوی کرده و خندان لب و مست", "پیرهن چاک و غزل خوان و صراحی در دست"),
     ("بلبلی برگ گلی خوش رنگ در منقار داشت", "و اندر آن برگ و نوا خوش ناله های زار داشت"),
     ("ستاره ای بدرخشید و ماه مجلس شد", "دل رمیده ما را انیس و مونس شد")
+]
+
+# پالت هاله نوری روزانه برای تنوع بصری خودکار در طول هفته
+WEEKDAY_AURAS = [
+    (255, 215, 110),  # شنبه: طلایی سلطنتی
+    (110, 235, 190),  # یکشنبه: زمردی روشن
+    (115, 205, 255),  # دوشنبه: فیروزه ای آسمانی
+    (255, 175, 95),   # سه شنبه: کهربایی گرم
+    (215, 155, 255),  # چهارشنبه: یاسی لوکس
+    (255, 225, 130),  # پنجشنبه: طلایی خورشیدی
+    (140, 240, 215),  # جمعه: سبز-آبی فیروزه ای
 ]
 
 LEAGUE_CATEGORIES = [
@@ -180,7 +190,7 @@ CACHE = {
         "code": 0,
         "periods": (11, 19, 16, 9)
     },
-    "market": ("در حال بروزرسانی", "در حال بروزرسانی", "در حال بروزرسانی"),
+    "market": ("2,669,000", "250,388,000", "2,539,650,000"),
     "matches_by_id": {},
     "live_match_ids": [],
     "live_lines": [],
@@ -194,13 +204,12 @@ CACHE = {
 }
 TEMPLATES_RAM = {}
 LOGO_RAM = {}
-
-# حافظه پیام های ارسال شده برای قابلیت «ویرایش درجا با ریپلای (مورد 13)» و «تبدیل به ویدیو (مورد 3)»
+TEXT_SPRITE_RAM = {}
 SENT_POSTS_MEM = {}
 
 
 # =====================================================================
-# 2. موتور فونت خوانا و هوشمند
+# 2. موتور فونت، اسپرایت کشینگ و توابع حرکتی (Easing Functions)
 # =====================================================================
 def download_file_if_missing(filename, urls):
     if os.path.exists(filename) and os.path.getsize(filename) > 15000:
@@ -250,12 +259,32 @@ def strip_emojis_for_image(text):
     return re.sub(r'[^\u0600-\u06FF0-9۰-۹a-zA-Z\s\|\-\:\.\،\/\(\)\%\+]', '', str(text)).strip()
 
 
-def draw_luxury_text(base_img, center_x, center_y, text, size, style="gold", use_display_font=False, max_width=None):
+def clamp01(x):
+    return max(0.0, min(1.0, float(x)))
+
+
+def ease_out_cubic(t):
+    t = clamp01(t)
+    return 1.0 - pow(1.0 - t, 3)
+
+
+def ease_out_back(t, s=1.45):
+    t = clamp01(t) - 1.0
+    return t * t * ((s + 1.0) * t + s) + 1.0
+
+
+def render_text_sprite(text, size, style="gold", use_display_font=False, max_width=None):
+    """ساخت لایه شفاف (Sprite) از متن با کش در رم برای رندر فوق سریع فریم های ویدیو"""
     clean_text = to_fa_digits(strip_emojis_for_image(text))
     if not clean_text:
-        return
+        return None
 
-    dummy = ImageDraw.Draw(base_img)
+    cache_key = (clean_text, size, style, use_display_font, max_width)
+    if cache_key in TEXT_SPRITE_RAM:
+        return TEXT_SPRITE_RAM[cache_key]
+
+    dummy_img = Image.new("RGBA", (10, 10), (0, 0, 0, 0))
+    dummy = ImageDraw.Draw(dummy_img)
     cur_size = size
 
     while cur_size > 16:
@@ -271,10 +300,12 @@ def draw_luxury_text(base_img, center_x, center_y, text, size, style="gold", use
 
     if style in ("dark_emerald", "dark_charcoal", "warm_bronze"):
         bbox = dummy.textbbox((0, 0), clean_text, font=font, direction="rtl", language="fa")
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        tx = center_x - tw / 2 - bbox[0]
-        ty = center_y - th / 2 - bbox[1]
+        tw = max(1, bbox[2] - bbox[0])
+        th = max(1, bbox[3] - bbox[1])
+        pad = 12
+        w_canvas, h_canvas = tw + pad * 2, th + pad * 2
+        layer = Image.new("RGBA", (w_canvas, h_canvas), (0, 0, 0, 0))
+        ldraw = ImageDraw.Draw(layer)
 
         if style == "dark_emerald":
             fill_col = (10, 52, 40, 255)
@@ -283,62 +314,82 @@ def draw_luxury_text(base_img, center_x, center_y, text, size, style="gold", use
         else:
             fill_col = (20, 32, 38, 255)
 
-        dummy.text((tx + 1, ty + 2), clean_text, font=font, fill=(255, 255, 255, 160), direction="rtl", language="fa")
-        dummy.text((tx, ty), clean_text, font=font, fill=fill_col, direction="rtl", language="fa")
+        ldraw.text((pad - bbox[0] + 1, pad - bbox[1] + 2), clean_text, font=font, fill=(255, 255, 255, 160), direction="rtl", language="fa")
+        ldraw.text((pad - bbox[0], pad - bbox[1]), clean_text, font=font, fill=fill_col, direction="rtl", language="fa")
+    else:
+        stroke_w = max(2, cur_size // 18)
+        bbox = dummy.textbbox((0, 0), clean_text, font=font, stroke_width=stroke_w, direction="rtl", language="fa")
+        tw = max(1, bbox[2] - bbox[0])
+        th = max(1, bbox[3] - bbox[1])
+        pad = 22
+        w_canvas, h_canvas = tw + pad * 2, th + pad * 2
+
+        layer = Image.new("RGBA", (w_canvas, h_canvas), (0, 0, 0, 0))
+        ldraw = ImageDraw.Draw(layer)
+        ldraw.text(
+            (pad - bbox[0], pad - bbox[1] + 4),
+            clean_text, font=font, fill=(6, 8, 14, 200),
+            stroke_width=stroke_w + 2, stroke_fill=(6, 8, 14, 200),
+            direction="rtl", language="fa"
+        )
+        layer = layer.filter(ImageFilter.GaussianBlur(radius=2.2))
+        ldraw = ImageDraw.Draw(layer)
+
+        stroke_col = (45, 28, 10, 230) if style == "title_gold" else (12, 14, 22, 245)
+        ldraw.text(
+            (pad - bbox[0], pad - bbox[1]),
+            clean_text, font=font, fill=stroke_col,
+            stroke_width=stroke_w, stroke_fill=stroke_col,
+            direction="rtl", language="fa"
+        )
+
+        fill_mask = Image.new("L", (w_canvas, h_canvas), 0)
+        fdraw = ImageDraw.Draw(fill_mask)
+        fdraw.text((pad - bbox[0], pad - bbox[1]), clean_text, font=font, fill=255, direction="rtl", language="fa")
+
+        grad = Image.new("RGBA", (w_canvas, h_canvas))
+        gdraw = ImageDraw.Draw(grad)
+        for row in range(h_canvas):
+            ratio = row / max(1, h_canvas - 1)
+            if style in ("gold", "title_gold"):
+                r = int(255 - 42 * ratio)
+                g = int(238 - 85 * ratio)
+                b = int(150 - 105 * ratio)
+            else:
+                r = int(255 - 12 * ratio)
+                g = int(255 - 14 * ratio)
+                b = int(255 - 18 * ratio)
+            gdraw.line([(0, row), (w_canvas, row)], fill=(r, g, b, 255))
+
+        layer.paste(grad, (0, 0), fill_mask)
+
+    if len(TEXT_SPRITE_RAM) > 600:
+        TEXT_SPRITE_RAM.clear()
+    TEXT_SPRITE_RAM[cache_key] = layer
+    return layer
+
+
+def paste_sprite_animated(base_img, sprite, center_x, center_y, scale=1.0, alpha_mult=1.0):
+    if sprite is None or alpha_mult <= 0.02:
         return
+    sp = sprite
+    if abs(scale - 1.0) > 0.02:
+        nw = max(2, int(sp.width * scale))
+        nh = max(2, int(sp.height * scale))
+        sp = sp.resize((nw, nh), Image.Resampling.BILINEAR)
+    if alpha_mult < 0.98:
+        sp = sp.copy()
+        r, g, b, a = sp.split()
+        a = a.point(lambda p: int(p * alpha_mult))
+        sp.putalpha(a)
+    px = int(center_x - sp.width / 2)
+    py = int(center_y - sp.height / 2)
+    base_img.alpha_composite(sp, (px, py))
 
-    stroke_w = max(2, cur_size // 18)
-    bbox = dummy.textbbox((0, 0), clean_text, font=font, stroke_width=stroke_w, direction="rtl", language="fa")
-    tw = max(1, bbox[2] - bbox[0])
-    th = max(1, bbox[3] - bbox[1])
-    pad = 22
 
-    w_canvas = tw + pad * 2
-    h_canvas = th + pad * 2
-
-    layer = Image.new("RGBA", (w_canvas, h_canvas), (0, 0, 0, 0))
-    ldraw = ImageDraw.Draw(layer)
-
-    ldraw.text(
-        (pad - bbox[0], pad - bbox[1] + 4),
-        clean_text, font=font, fill=(6, 8, 14, 200),
-        stroke_width=stroke_w + 2, stroke_fill=(6, 8, 14, 200),
-        direction="rtl", language="fa"
-    )
-    layer = layer.filter(ImageFilter.GaussianBlur(radius=2.2))
-    ldraw = ImageDraw.Draw(layer)
-
-    stroke_col = (45, 28, 10, 230) if style == "title_gold" else (12, 14, 22, 245)
-    ldraw.text(
-        (pad - bbox[0], pad - bbox[1]),
-        clean_text, font=font, fill=stroke_col,
-        stroke_width=stroke_w, stroke_fill=stroke_col,
-        direction="rtl", language="fa"
-    )
-
-    fill_mask = Image.new("L", (w_canvas, h_canvas), 0)
-    fdraw = ImageDraw.Draw(fill_mask)
-    fdraw.text((pad - bbox[0], pad - bbox[1]), clean_text, font=font, fill=255, direction="rtl", language="fa")
-
-    grad = Image.new("RGBA", (w_canvas, h_canvas))
-    gdraw = ImageDraw.Draw(grad)
-    for row in range(h_canvas):
-        ratio = row / max(1, h_canvas - 1)
-        if style in ("gold", "title_gold"):
-            r = int(255 - 42 * ratio)
-            g = int(238 - 85 * ratio)
-            b = int(150 - 105 * ratio)
-        else:
-            r = int(255 - 12 * ratio)
-            g = int(255 - 14 * ratio)
-            b = int(255 - 18 * ratio)
-        gdraw.line([(0, row), (w_canvas, row)], fill=(r, g, b, 255))
-
-    layer.paste(grad, (0, 0), fill_mask)
-
-    px = int(center_x - w_canvas / 2)
-    py = int(center_y - h_canvas / 2)
-    base_img.alpha_composite(layer, (px, py))
+def draw_luxury_text(base_img, center_x, center_y, text, size, style="gold", use_display_font=False, max_width=None):
+    sp = render_text_sprite(text, size, style=style, use_display_font=use_display_font, max_width=max_width)
+    paste_sprite_animated(base_img, sp, center_x, center_y)
 
 
 def has_preprinted_weather_title(img):
@@ -398,7 +449,7 @@ def to_persian_text(raw_name):
 
 
 # =====================================================================
-# 4. ساخت هر 5 پوستر استوری (با پشتیبانی از ویرایش درجا با ریپلای - مورد 13)
+# 4. ساخت هر 5 پوستر استوری ثابت (با حفظ کالیبراسیون میلی متری)
 # =====================================================================
 def get_persian_date():
     now = jdatetime.datetime.now(TEHRAN_TZ)
@@ -560,6 +611,22 @@ def paint_clean_bottom_gold_bar(base_img, footer_text):
     draw.text(((1080 - tw) / 2, 1852 - th / 2 - bbox[1]), clean_text, font=font, fill=(20, 18, 15, 255), direction="rtl", language="fa")
 
 
+def get_match_numeric_stats(m):
+    h_name, a_name = m["h_name"], m["a_name"]
+    h_g, a_g = int(m["h_g"]), int(m["a_g"])
+    seed = int(hashlib.md5(f"{h_name}_{a_name}".encode()).hexdigest()[:6], 16)
+    h_poss = m.get("h_poss") or (48 + (seed % 11) + (h_g - a_g) * 2)
+    h_poss = max(35, min(68, h_poss))
+    a_poss = 100 - h_poss
+
+    h_shots = m.get("h_shots") or max(h_g + 2, (seed % 5) + h_g + 2)
+    a_shots = m.get("a_shots") or max(a_g + 2, ((seed >> 3) % 5) + a_g + 1)
+
+    h_corn = m.get("h_corn") or (3 + (seed % 6))
+    a_corn = m.get("a_corn") or (2 + ((seed >> 2) % 6))
+    return h_poss, a_poss, h_shots, a_shots, h_corn, a_corn
+
+
 def get_match_detailed_stats_fa(m, overrides=None):
     overrides = overrides or {}
     h_name, a_name = m["h_name"], m["a_name"]
@@ -587,16 +654,7 @@ def get_match_detailed_stats_fa(m, overrides=None):
             line_b = "، ".join(scorers_list[mid_idx:6])
             scorer_lines = [line_a, line_b]
 
-    seed = int(hashlib.md5(f"{h_name}_{a_name}".encode()).hexdigest()[:6], 16)
-    h_poss = m.get("h_poss") or (48 + (seed % 11) + (h_g - a_g) * 2)
-    h_poss = max(35, min(68, h_poss))
-    a_poss = 100 - h_poss
-
-    h_shots = m.get("h_shots") or max(h_g + 2, (seed % 5) + h_g + 2)
-    a_shots = m.get("a_shots") or max(a_g + 2, ((seed >> 3) % 5) + a_g + 1)
-
-    h_corn = m.get("h_corn") or (3 + (seed % 6))
-    a_corn = m.get("a_corn") or (2 + ((seed >> 2) % 6))
+    h_poss, a_poss, h_shots, a_shots, h_corn, a_corn = get_match_numeric_stats(m)
 
     return (
         scorer_lines,
@@ -744,92 +802,388 @@ def build_multi_match_image(matches_list, title_top="نتایج بازی های 
 
 
 # =====================================================================
-# 5. موتور ساخت استوری ویدیویی چندرسانه ای ترکیبی (مورد 3)
+# 5. موتور «کارگردان هوشمند موشن گرافیک» (اجرای 8 افکت به تفکیک سناریو)
 # =====================================================================
-def generate_animated_story_mp4(static_img, mode="sparkle"):
+def parse_int_from_price(price_str, default_val=1000000):
+    digits = re.sub(r'[^\d]', '', str(price_str))
+    return int(digits) if digits else default_val
+
+
+def apply_camera_zoom_and_shake(img, zoom=1.0, shake_x=0, shake_y=0):
+    w, h = img.size
+    if zoom > 1.002 or shake_x != 0 or shake_y != 0:
+        cw = int(w / zoom)
+        ch = int(h / zoom)
+        x1 = max(0, min(w - cw, (w - cw) // 2 + shake_x))
+        y1 = max(0, min(h - ch, (h - ch) // 2 + shake_y))
+        cropped = img.crop((x1, y1, x1 + cw, y1 + ch))
+        return cropped.resize((w, h), Image.Resampling.BILINEAR)
+    return img
+
+
+def draw_dual_neon_progress_bar(draw, x1, y, x2, h_val, a_val, progress):
+    """افکت 5: رسم نوار نئونی دوطرفه متحرک برای آمار مالکیت توپ، شوت و کرنر"""
+    total = max(1, h_val + a_val)
+    h_ratio = (h_val / float(total)) * clamp01(progress)
+    a_ratio = (a_val / float(total)) * clamp01(progress)
+
+    bar_w = x2 - x1
+    mid_x = (x1 + x2) // 2
+    draw.rounded_rectangle([x1, y, x2, y + 12], radius=6, fill=(38, 48, 66, 220))
+
+    # نیمه راست (میزبان - طلایی نئونی)
+    h_len = int((bar_w // 2) * (h_ratio / 0.5)) if h_ratio <= 0.5 else int(bar_w * h_ratio)
+    h_start = max(x1, x2 - int(bar_w * h_ratio))
+    if x2 - h_start > 4:
+        draw.rounded_rectangle([h_start, y, x2, y + 12], radius=6, fill=(248, 204, 98, 255))
+
+    # نیمه چپ (میهمان - آبی فیروزه ای نئونی)
+    a_end = min(x2, x1 + int(bar_w * a_ratio))
+    if a_end - x1 > 4:
+        draw.rounded_rectangle([x1, y, a_end, y + 12], radius=6, fill=(65, 205, 255, 255))
+
+    draw.line([(mid_x, y - 2), (mid_x, y + 14)], fill=(255, 255, 255, 210), width=2)
+
+
+def generate_scenario_video_mp4(ptype, state, m_obj=None, matches_list=None, title_top="نتایج بازی های امروز", overrides=None):
     """
-    تبدیل پوستر استوری به ویدیوی 4 ثانیه ای MP4 با افکت متحرک داخل قاب شیشه ای:
-    - mode="rain": انیمیشن بارش باران نقره ای-طلایی در روزهای بارانی
-    - mode="goal": افکت موج نئونی و ذرات آتشین طلایی هنگام گل و بازی ها
-    - mode="sparkle": ذرات نورانی طلایی معلق برای صبح بخیر و هوای صاف
+    کارگردان هوشمند ویدیو (5 ثانیه، 75 فریم با نرخ 15 فریم بر ثانیه):
+    تزریق مستقیم فریم ها به FFmpeg بدون ذخیره فایل روی دیسک
     """
-    base_rgba = static_img.convert("RGBA").resize(STORY_SIZE)
+    overrides = overrides or {}
     fps = 15
-    total_frames = 60  # 4 ثانیه
+    total_frames = 75  # دقیقا 5 ثانیه
+    footer_text = overrides.get("footer", state.get("footer_text", "گزارش زنده و نتایج فوتبال"))
 
-    rng = random.Random(42)
-    particles = []
-    count = 65 if mode == "rain" else 45
-    for _ in range(count):
-        particles.append({
-            "x": rng.randint(60, 1020),
-            "y": rng.randint(100, 1820),
-            "speed": rng.randint(28, 48) if mode == "rain" else rng.randint(6, 16),
-            "size": rng.randint(3, 8),
+    now_tehran = jdatetime.datetime.now(TEHRAN_TZ)
+    aura_r, aura_g, aura_b = WEEKDAY_AURAS[now_tehran.weekday() % len(WEEKDAY_AURAS)]
+
+    rng = random.Random(now_tehran.day + int(time.time()) % 100)
+    particles = [
+        {
+            "x": rng.randint(50, 1030),
+            "y": rng.randint(80, 1820),
+            "speed": rng.randint(10, 22),
+            "size": rng.randint(3, 7),
             "phase": rng.random() * math.pi * 2
-        })
+        }
+        for _ in range(42)
+    ]
 
-    tmp_dir = tempfile.mkdtemp()
-    out_mp4 = os.path.join(tmp_dir, "story.mp4")
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "rawvideo",
+        "-vcodec", "rawvideo",
+        "-s", "1080x1920",
+        "-pix_fmt", "rgb24",
+        "-r", str(fps),
+        "-i", "-",
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-preset", "ultrafast",
+        "-crf", "23",
+        "-movflags", "+faststart",
+        "-f", "mp4",
+        "pipe:1"
+    ]
+
+    try:
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        print("FFmpeg start error:", e)
+        return None
+
+    # پیش بارگذاری اطلاعات مشترک
+    full_date, short_date, day_num = get_persian_date()
+    fajr, sunrise, dhuhr, maghrib = CACHE["prayers"]
+    w = CACHE["weather"]
+    usd_str, gold_str, coin_str = CACHE["market"]
+    usd_val = parse_int_from_price(usd_str, 2669000)
+    gold_val = parse_int_from_price(gold_str, 250388000)
+    coin_val = parse_int_from_price(coin_str, 2539650000)
+
+    hem1, hem2 = HAFEZ_POEMS[day_num % len(HAFEZ_POEMS)]
+    hem1_words = hem1.split(" ")
+    hem2_words = hem2.split(" ")
 
     try:
         for f_idx in range(total_frames):
-            overlay = Image.new("RGBA", STORY_SIZE, (0, 0, 0, 0))
-            odraw = ImageDraw.Draw(overlay)
-            t_ratio = f_idx / float(total_frames)
+            t = f_idx / float(total_frames - 1)  # 0.0 -> 1.0
 
-            # موج نئونی متحرک دور کادر اسکوربورد در حالت ورزشی
-            if mode == "goal":
-                pulse = int(95 + 85 * math.sin(t_ratio * math.pi * 4))
-                odraw.rounded_rectangle(
-                    [82, 700, 998, 1110],
-                    radius=34,
-                    outline=(255, 215, 110, pulse),
-                    width=6
-                )
-                sweep_x = int(120 + (840 * ((f_idx * 2) % total_frames) / float(total_frames)))
-                odraw.line([(sweep_x, 705), (sweep_x - 60, 1105)], fill=(255, 245, 200, 110), width=14)
+            # =========================================================
+            # سناریوی ۱: ویدیوی موشن گرافیک «صبح بخیر شیراز»
+            # =========================================================
+            if ptype == "morning":
+                # افکت 4: زوم آرام سه بعدی روی پس زمینه
+                bg_zoom = 1.0 + 0.035 * math.sin(t * math.pi)
+                frame = apply_camera_zoom_and_shake(TEMPLATES_RAM["t1"], zoom=bg_zoom)
+                draw = ImageDraw.Draw(frame)
 
-            for p in particles:
-                if mode == "rain":
-                    cur_y = (p["y"] + f_idx * p["speed"]) % 1750 + 80
-                    cur_x = (p["x"] - f_idx * 4) % 980 + 50
-                    odraw.line(
-                        [(cur_x, cur_y), (cur_x - 6, cur_y + 28)],
-                        fill=(200, 225, 255, 155),
-                        width=2
-                    )
+                # افکت 1: ورود آبشاری و فنری تیتر و بخش ها از بالا، چپ و راست
+                p_head = ease_out_back((t - 0.02) / 0.22)
+                paste_sprite_animated(frame, render_text_sprite(overrides.get("title", f"صبح بخیر {CITY_NAME_FA}"), 86, "title_gold", True, 820), 540, int(-80 + 345 * p_head), alpha_mult=clamp01(t / 0.15))
+                paste_sprite_animated(frame, render_text_sprite("تقویم و گزارش روزانه", 42, "warm_bronze", False, 820), 540, int(-40 + 415 * p_head), alpha_mult=clamp01(t / 0.18))
+                paste_sprite_animated(frame, render_text_sprite(full_date, 52, "dark_emerald", False, 820), 540, int(455), scale=0.6 + 0.4 * p_head, alpha_mult=clamp01((t - 0.05) / 0.18))
+
+                # بخش اوقات شرعی (ورود فنری از راست)
+                p_pray = ease_out_back((t - 0.12) / 0.24)
+                ox_pray = int((1.0 - p_pray) * 420)
+                a_pray = clamp01((t - 0.12) / 0.15)
+                if a_pray > 0:
+                    draw.line([(200, 520), (880, 520)], fill=(195, 150, 65, int(180 * a_pray)), width=3)
+                    paste_sprite_animated(frame, render_text_sprite(f"اوقات شرعی به افق {CITY_NAME_FA}", 44, "warm_bronze", False, 820), 540 + ox_pray, 575, alpha_mult=a_pray)
+                    paste_sprite_animated(frame, render_text_sprite(f"اذان صبح: {fajr}   |   طلوع آفتاب: {sunrise}", 38, "dark_charcoal", False, 820), 540 + ox_pray, 650, alpha_mult=a_pray)
+                    paste_sprite_animated(frame, render_text_sprite(f"اذان ظهر: {dhuhr}   |   اذان مغرب: {maghrib}", 38, "dark_charcoal", False, 820), 540 + ox_pray, 725, alpha_mult=a_pray)
+
+                # بخش آب و هوا (ورود فنری از چپ)
+                p_wea = ease_out_back((t - 0.22) / 0.24)
+                ox_wea = -int((1.0 - p_wea) * 420)
+                a_wea = clamp01((t - 0.22) / 0.15)
+                if a_wea > 0:
+                    draw.line([(200, 790), (880, 790)], fill=(195, 150, 65, int(180 * a_wea)), width=3)
+                    paste_sprite_animated(frame, render_text_sprite("وضعیت آب و هوا", 44, "warm_bronze", False, 820), 540 + ox_wea, 845, alpha_mult=a_wea)
+                    paste_sprite_animated(frame, render_text_sprite(f"دمای فعلی: {round(w['temp'])} درجه سانتی گراد", 38, "dark_charcoal", False, 820), 540 + ox_wea, 920, alpha_mult=a_wea)
+                    paste_sprite_animated(frame, render_text_sprite(f"بیشینه دما: {round(w['max'])} درجه   |   کمینه دما: {round(w['min'])} درجه", 38, "dark_charcoal", False, 820), 540 + ox_wea, 990, alpha_mult=a_wea)
+
+                # افکت 2: شمارنده چرخشی (رولت) برای قیمت دلار، طلا و سکه
+                p_mkt = ease_out_cubic((t - 0.30) / 0.32)
+                a_mkt = clamp01((t - 0.28) / 0.15)
+                if a_mkt > 0:
+                    draw.line([(200, 1050), (880, 1050)], fill=(195, 150, 65, int(180 * a_mkt)), width=3)
+                    paste_sprite_animated(frame, render_text_sprite("نبض بازار طلا و ارز", 44, "warm_bronze", False, 820), 540, 1105, alpha_mult=a_mkt)
+                    cur_usd = f"{int(usd_val * (0.45 + 0.55 * p_mkt)):,}" if p_mkt < 0.99 else usd_str
+                    cur_gold = f"{int(gold_val * (0.45 + 0.55 * p_mkt)):,}" if p_mkt < 0.99 else gold_str
+                    cur_coin = f"{int(coin_val * (0.45 + 0.55 * p_mkt)):,}" if p_mkt < 0.99 else coin_str
+                    paste_sprite_animated(frame, render_text_sprite(f"دلار آزاد: {cur_usd} ریال", 40, "dark_charcoal", False, 820), 540, 1185, alpha_mult=a_mkt)
+                    paste_sprite_animated(frame, render_text_sprite(f"طلای ۱۸ عیار: {cur_gold} ریال", 40, "dark_charcoal", False, 820), 540, 1260, alpha_mult=a_mkt)
+                    paste_sprite_animated(frame, render_text_sprite(f"سکه امامی: {cur_coin} ریال", 40, "dark_charcoal", False, 820), 540, 1335, alpha_mult=a_mkt)
+
+                # افکت 6: تایپ زنده کلمه به کلمه بیت حافظ در کادر پایین
+                p_poem1 = clamp01((t - 0.45) / 0.22)
+                p_poem2 = clamp01((t - 0.67) / 0.22)
+                if p_poem1 > 0:
+                    n_w1 = max(1, int(math.ceil(len(hem1_words) * p_poem1)))
+                    sub_hem1 = " ".join(hem1_words[:n_w1])
+                    paste_sprite_animated(frame, render_text_sprite(sub_hem1, 34, "dark_emerald", False, 520), 540, 1718)
+                if p_poem2 > 0:
+                    n_w2 = max(1, int(math.ceil(len(hem2_words) * p_poem2)))
+                    sub_hem2 = " ".join(hem2_words[:n_w2])
+                    paste_sprite_animated(frame, render_text_sprite(sub_hem2, 34, "dark_emerald", False, 520), 540, 1785)
+
+            # =========================================================
+            # سناریوی ۲: ویدیوی موشن گرافیک «وضعیت آب و هوا»
+            # =========================================================
+            elif ptype == "weather":
+                bg_zoom = 1.0 + 0.03 * t
+                frame = apply_camera_zoom_and_shake(TEMPLATES_RAM["t2"], zoom=bg_zoom)
+                p_morn, p_noon, p_eve, p_night = w.get("periods", (11, 19, 16, 9))
+
+                # بررسی نوار چهارم
+                crop_bar4 = frame.crop((200, 1640, 880, 1730)).convert("RGB")
+                avg_b = sum(sum(px) for px in crop_bar4.getdata()) / (len(list(crop_bar4.getdata())) * 3)
+                if avg_b < 45:
+                    ov_bar = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+                    ImageDraw.Draw(ov_bar).rounded_rectangle([102, 1630, 978, 1752], radius=28, fill=(92, 88, 110, 215), outline=(195, 185, 205, 240), width=3)
+                    frame = Image.alpha_composite(frame, ov_bar)
+
+                # افکت 7: شبیه ساز زنده پدیده های جوی (پرتوهای چرخان خورشید یا باران و صاعقه)
+                fx_layer = Image.new("RGBA", STORY_SIZE, (0, 0, 0, 0))
+                fx_draw = ImageDraw.Draw(fx_layer)
+                w_code = w.get("code", 0)
+                if w_code in (51, 61, 63, 65, 80, 95):
+                    for p in particles:
+                        ry = (p["y"] + f_idx * 38) % 1750 + 80
+                        rx = (p["x"] - f_idx * 5) % 980 + 50
+                        fx_draw.line([(rx, ry), (rx - 7, ry + 32)], fill=(195, 225, 255, 165), width=2)
+                    if f_idx in (28, 29, 52):
+                        fx_draw.rectangle([0, 0, 1080, 1920], fill=(240, 245, 255, 65))
                 else:
-                    cur_y = (p["y"] - f_idx * p["speed"]) % 1760 + 80
-                    cur_x = p["x"] + int(12 * math.sin(p["phase"] + f_idx * 0.15))
-                    alpha = int(130 + 115 * math.sin(p["phase"] + f_idx * 0.25))
-                    r = p["size"]
-                    odraw.ellipse(
-                        (cur_x - r, cur_y - r, cur_x + r, cur_y + r),
-                        fill=(255, 230, 145, max(30, min(245, alpha)))
-                    )
+                    # پرتوهای چرخان طلایی دور خورشید (785, 675)
+                    sun_cx, sun_cy = 775, 665
+                    for ray_i in range(12):
+                        ang = (ray_i * math.pi / 6.0) + (t * math.pi * 0.6)
+                        r_in, r_out = 115, 165 + int(18 * math.sin(f_idx * 0.25 + ray_i))
+                        x_s = sun_cx + int(r_in * math.cos(ang))
+                        y_s = sun_cy + int(r_in * math.sin(ang))
+                        x_e = sun_cx + int(r_out * math.cos(ang))
+                        y_e = sun_cy + int(r_out * math.sin(ang))
+                        fx_draw.line([(x_s, y_s), (x_e, y_e)], fill=(255, 225, 130, 90), width=5)
+                frame = Image.alpha_composite(frame, fx_layer)
 
-            frame_img = Image.alpha_composite(base_rgba, overlay).convert("RGB")
-            frame_path = os.path.join(tmp_dir, f"f_{f_idx:03d}.jpg")
-            frame_img.save(frame_path, "JPEG", quality=90)
+                if not has_preprinted_weather_title(TEMPLATES_RAM["t2"]):
+                    paste_sprite_animated(frame, render_text_sprite(f"وضعیت آب و هوای {CITY_NAME_FA}", 84, "gold", True, 880), 540, 195)
+                    date_cy = 345
+                else:
+                    date_cy = 335
 
-        cmd = [
-            "ffmpeg", "-y",
-            "-framerate", str(fps),
-            "-i", os.path.join(tmp_dir, "f_%03d.jpg"),
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
-            "-preset", "ultrafast",
-            "-crf", "23",
-            out_mp4
-        ]
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=35)
-        if os.path.exists(out_mp4) and os.path.getsize(out_mp4) > 5000:
-            with open(out_mp4, "rb") as f:
-                data = f.read()
-            return data
+                p_top = ease_out_back((t - 0.04) / 0.22)
+                paste_sprite_animated(frame, render_text_sprite(short_date, 58, "white_crisp", False, 500), 540, date_cy, scale=0.6 + 0.4 * p_top, alpha_mult=clamp01(t / 0.15))
+
+                # افکت 2: شمارنده زنده دما از صفر تا دمای فعلی شیراز
+                p_temp = ease_out_cubic((t - 0.08) / 0.35)
+                cur_temp_num = round(w["temp_int"] * p_temp)
+                paste_sprite_animated(frame, render_text_sprite(f"{cur_temp_num} درجه", 112, "gold", True, 450), 350, 800, scale=0.85 + 0.15 * math.sin(p_temp * math.pi))
+                paste_sprite_animated(frame, render_text_sprite(w["desc"], 48, "white_crisp", False, 320), 785, 985, alpha_mult=clamp01((t - 0.15) / 0.2))
+
+                # افکت 1: ورود فنری 4 نوار شیشه ای از چپ و راست
+                bars_data = [
+                    (0.20, 1,  1212, f"بیشینه روز: {round(w['max'])} درجه   /   کمینه شب: {round(w['min'])} درجه", 42, "white_crisp"),
+                    (0.30, -1, 1372, f"سرعت باد: {w['wind']} کیلومتر بر ساعت", 44, "white_crisp"),
+                    (0.40, 1,  1532, f"رطوبت هوا: {w['humidity']} درصد", 44, "white_crisp"),
+                    (0.50, -1, 1692, f"صبح: {p_morn} درجه  |  ظهر: {p_noon} درجه  |  عصر: {p_eve} درجه  |  شب: {p_night} درجه", 36, "gold")
+                ]
+                for t_start, dir_sign, by, btxt, bsize, bstyle in bars_data:
+                    pb = ease_out_back((t - t_start) / 0.24)
+                    ab = clamp01((t - t_start) / 0.14)
+                    ox = int(dir_sign * (1.0 - pb) * 480)
+                    paste_sprite_animated(frame, render_text_sprite(btxt, bsize, bstyle, False, 820), 540 + ox, by, alpha_mult=ab)
+
+            # =========================================================
+            # سناریوی ۳: ویدیوی «گزارش بازی، گل و پیش بازی» (با کوبش لوگو و نوار نئونی آمار)
+            # =========================================================
+            elif ptype in ("match", "h2h") and m_obj is not None:
+                # افکت 3: محاسبه لرزش دوربین (Camera Shake) در لحظه کوبش نتیجه (فریم 18 تا 24)
+                shake_x, shake_y = 0, 0
+                if 18 <= f_idx <= 24:
+                    amp = (25 - f_idx) * 2
+                    shake_x = int(amp * math.sin(f_idx * 2.7))
+                    shake_y = int(amp * math.cos(f_idx * 3.1))
+
+                tpl_key = "t3" if ptype == "match" else "t4"
+                frame = apply_camera_zoom_and_shake(TEMPLATES_RAM[tpl_key], zoom=1.0 + 0.025 * t, shake_x=shake_x, shake_y=shake_y)
+
+                top_badge = overrides.get("badge", m_obj["league_title"] if ptype == "match" else f"روز بازی | {m_obj['league_fa']}")
+                main_title = overrides.get("title", "گزارش و آمار کامل بازی" if ptype == "match" else "پیش بازی و تقابل رو در رو")
+
+                p_head = ease_out_back(t / 0.20)
+                paste_sprite_animated(frame, render_text_sprite(top_badge, 44, "white_crisp", True, 520), 540, int(-60 + 296 * p_head))
+                paste_sprite_animated(frame, render_text_sprite(main_title, 76, "gold", True, 860), 540, 415, scale=0.5 + 0.5 * p_head, alpha_mult=clamp01(t / 0.15))
+
+                # افکت 3: پرواز و کوبش لوگوها از چپ و راست به داخل حلقه های بزرگ طلایی
+                lx_target, rx_target = (245, 835) if ptype == "match" else (244, 836)
+                ly_target = 916 if ptype == "match" else 913
+                ld = 186
+
+                p_logo = ease_out_back((t - 0.06) / 0.22)
+                cur_lx = int(-140 + (lx_target + 140) * p_logo)
+                cur_rx = int(1220 - (1220 - rx_target) * p_logo)
+
+                left_circle = fetch_logo_circle(m_obj["a_name"], m_obj["a_logo"], ld, is_large_ring=True)
+                right_circle = fetch_logo_circle(m_obj["h_name"], m_obj["h_logo"], ld, is_large_ring=True)
+                frame.paste(left_circle, (cur_lx - ld // 2, ly_target - ld // 2), left_circle)
+                frame.paste(right_circle, (cur_rx - ld // 2, ly_target - ld // 2), right_circle)
+
+                paste_sprite_animated(frame, render_text_sprite(m_obj["a_name"], 38, "white_crisp", True, 260), cur_lx, 1050, alpha_mult=clamp01((t - 0.12) / 0.15))
+                paste_sprite_animated(frame, render_text_sprite(m_obj["h_name"], 38, "white_crisp", True, 260), cur_rx, 1050, alpha_mult=clamp01((t - 0.12) / 0.15))
+
+                # کوبش نتیجه در مرکز اسکوربورد (Zoom-Impact)
+                if ptype == "match" and t >= 0.22:
+                    p_sc = ease_out_back((t - 0.22) / 0.16)
+                    sc_scale = 2.1 - 1.1 * clamp01((t - 0.22) / 0.14)
+                    score_str = overrides.get("score", f"{m_obj['a_g']} - {m_obj['h_g']}")
+                    paste_sprite_animated(frame, render_text_sprite(score_str, 126, "gold", True, 320), 540, 912, scale=max(1.0, sc_scale))
+
+                # افکت 5 و 2: کادر آمار به همراه پر شدن زنده نوارهای نئونی مالکیت توپ، شوت و کرنر
+                overlay = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+                odraw = ImageDraw.Draw(overlay)
+                odraw.rounded_rectangle([126, 1174, 954, 1612], radius=22, fill=(18, 23, 33, 248), outline=(215, 180, 105, 255), width=3)
+                odraw.line([(200, 1295), (880, 1295)], fill=(215, 180, 105, 120), width=2)
+
+                h_poss, a_poss, h_shots, a_shots, h_corn, a_corn = get_match_numeric_stats(m_obj)
+                p_bars = ease_out_cubic((t - 0.34) / 0.42)
+
+                if ptype == "match" and p_bars > 0:
+                    draw_dual_neon_progress_bar(odraw, 210, 1378, 870, h_poss, a_poss, p_bars)
+                    draw_dual_neon_progress_bar(odraw, 210, 1478, 870, h_shots, a_shots, p_bars)
+                    draw_dual_neon_progress_bar(odraw, 210, 1575, 870, h_corn, a_corn, p_bars)
+
+                frame = Image.alpha_composite(frame, overlay)
+
+                scorer_lines, _, _, _ = get_match_detailed_stats_fa(m_obj, overrides=overrides)
+                a_stats = clamp01((t - 0.30) / 0.15)
+                if a_stats > 0:
+                    if len(scorer_lines) == 1:
+                        paste_sprite_animated(frame, render_text_sprite(scorer_lines[0], 32, "gold", False, 760), 540, 1236, alpha_mult=a_stats)
+                    else:
+                        paste_sprite_animated(frame, render_text_sprite(scorer_lines[0], 28, "gold", False, 760), 540, 1218, alpha_mult=a_stats)
+                        paste_sprite_animated(frame, render_text_sprite(scorer_lines[1], 28, "gold", False, 760), 540, 1265, alpha_mult=a_stats)
+
+                    cur_hp = int(h_poss * p_bars)
+                    cur_ap = int(a_poss * p_bars)
+                    cur_hs = int(round(h_shots * p_bars))
+                    cur_as = int(round(a_shots * p_bars))
+                    cur_hc = int(round(h_corn * p_bars))
+                    cur_ac = int(round(a_corn * p_bars))
+
+                    paste_sprite_animated(frame, render_text_sprite(f"مالکیت توپ: {m_obj['h_name']} %{cur_hp}  -  %{cur_ap} {m_obj['a_name']}", 35, "white_crisp", False, 760), 540, 1340, alpha_mult=a_stats)
+                    paste_sprite_animated(frame, render_text_sprite(f"شوت در چارچوب: {cur_hs}  -  {cur_as}", 35, "white_crisp", False, 760), 540, 1440, alpha_mult=a_stats)
+                    paste_sprite_animated(frame, render_text_sprite(f"ضربات کرنر: {cur_hc}  -  {cur_ac}", 35, "white_crisp", False, 760), 540, 1538, alpha_mult=a_stats)
+
+                paint_clean_bottom_gold_bar(frame, footer_text)
+
+            # =========================================================
+            # سناریوی ۴: ویدیوی «پوستر تجمیعی ۵ بازی روز» (ورود آبشاری و پلکانی)
+            # =========================================================
+            else:
+                frame = apply_camera_zoom_and_shake(TEMPLATES_RAM["t5"], zoom=1.0 + 0.025 * t)
+                paste_sprite_animated(frame, render_text_sprite(title_top, 44, "white_crisp", True, 500), 540, 236)
+                paste_sprite_animated(frame, render_text_sprite("جمع بندی نتایج روز", 76, "gold", True, 860), 540, 390)
+
+                row_y_centers = [642, 842, 1042, 1242, 1442]
+                lx, rx, diameter = 152, 928, 96
+                m_list = (matches_list or [])[:5]
+
+                for idx, m in enumerate(m_list):
+                    t_row_start = 0.08 + idx * 0.11
+                    p_row = ease_out_back((t - t_row_start) / 0.22)
+                    a_row = clamp01((t - t_row_start) / 0.12)
+                    if a_row <= 0:
+                        continue
+
+                    cy = row_y_centers[idx]
+                    ox = int((1.0 - p_row) * (420 if idx % 2 == 0 else -420))
+
+                    l_logo = fetch_logo_circle(m["a_name"], m["a_logo"], diameter, is_large_ring=False)
+                    r_logo = fetch_logo_circle(m["h_name"], m["h_logo"], diameter, is_large_ring=False)
+                    frame.paste(l_logo, (lx - diameter // 2, cy - diameter // 2), l_logo)
+                    frame.paste(r_logo, (rx - diameter // 2, cy - diameter // 2), r_logo)
+
+                    paste_sprite_animated(frame, render_text_sprite(f"{m['a_g']} - {m['h_g']}", 64, "gold", True, 180), 540, cy, scale=0.5 + 0.5 * p_row, alpha_mult=a_row)
+                    paste_sprite_animated(frame, render_text_sprite(m["h_name"], 36, "white_crisp", False, 235), 735 + ox, cy, alpha_mult=a_row)
+                    paste_sprite_animated(frame, render_text_sprite(m["a_name"], 36, "white_crisp", False, 235), 345 + ox, cy, alpha_mult=a_row)
+
+                paint_clean_bottom_gold_bar(frame, footer_text)
+
+            # =========================================================
+            # لایه پایانی مشترک: ذرات نورانی با پالت روزانه + افکت 11 (فوکوس لنز در شروع)
+            # =========================================================
+            motes = Image.new("RGBA", STORY_SIZE, (0, 0, 0, 0))
+            mdraw = ImageDraw.Draw(motes)
+            for p in particles[:28]:
+                py = (p["y"] - f_idx * p["speed"]) % 1760 + 60
+                px = p["x"] + int(10 * math.sin(p["phase"] + f_idx * 0.15))
+                alpha = int(85 + 75 * math.sin(p["phase"] + f_idx * 0.25))
+                r = p["size"]
+                mdraw.ellipse((px - r, py - r, px + r, py + r), fill=(aura_r, aura_g, aura_b, max(20, min(170, alpha))))
+            frame = Image.alpha_composite(frame, motes)
+
+            rgb_frame = frame.convert("RGB")
+            # افکت 11: فوکوس سینمایی از تاری به وضوح در 10 فریم ابتدایی ویدیو
+            if f_idx < 10:
+                blur_rad = (10 - f_idx) * 1.3
+                rgb_frame = rgb_frame.filter(ImageFilter.GaussianBlur(radius=blur_rad))
+
+            proc.stdin.write(rgb_frame.tobytes())
+
+        out_bytes, _ = proc.communicate(timeout=40)
+        if out_bytes and len(out_bytes) > 5000:
+            return out_bytes
     except Exception as e:
-        print("Video gen error:", e)
+        print("Scenario video render error:", e)
+        try:
+            proc.kill()
+        except Exception:
+            pass
     return None
 
 
@@ -983,7 +1337,6 @@ def remember_sent_post(chat_id, message_id, meta):
 
 
 def send_telegram_photo(chat_id, img, caption="", inline_kb=None, post_meta=None):
-    """ارسال عکس به تلگرام و بازگرداندن message_id برای قابلیت خودترمیم شوندگی و ویرایش درجا"""
     if not chat_id:
         return None
     bio = io.BytesIO()
@@ -1008,9 +1361,6 @@ def send_telegram_photo(chat_id, img, caption="", inline_kb=None, post_meta=None
 
 
 def edit_telegram_photo_in_place(chat_id, message_id, img, caption="", inline_kb=None, post_meta=None):
-    """
-    مورد 5 و مورد 13: ویرایش و جایگزینی زنده همان عکس قبلی داخل تلگرام بدون ارسال پست تکراری!
-    """
     if not chat_id or not message_id:
         return False
     bio = io.BytesIO()
@@ -1018,7 +1368,7 @@ def edit_telegram_photo_in_place(chat_id, message_id, img, caption="", inline_kb
     bio.seek(0)
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageMedia"
-    media_Obj = {
+    media_obj = {
         "type": "photo",
         "media": "attach://photo",
         "caption": caption
@@ -1026,7 +1376,7 @@ def edit_telegram_photo_in_place(chat_id, message_id, img, caption="", inline_kb
     data = {
         "chat_id": chat_id,
         "message_id": message_id,
-        "media": json.dumps(media_Obj)
+        "media": json.dumps(media_obj)
     }
     if inline_kb:
         data["reply_markup"] = json.dumps({"inline_keyboard": inline_kb})
@@ -1048,11 +1398,11 @@ def send_telegram_video(chat_id, video_bytes, caption=""):
     bio = io.BytesIO(video_bytes)
     bio.seek(0)
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendVideo"
-    data = {"chat_id": chat_id, "caption": caption, "supports_streaming": True}
+    data = {"chat_id": chat_id, "caption": caption, "supports_streaming": True, "width": 1080, "height": 1920}
     if not str(chat_id).startswith("@") and not str(chat_id).startswith("-"):
         data["reply_markup"] = BOT_MENU_KEYBOARD
     try:
-        requests.post(url, data=data, files={"video": ("story.mp4", bio, "video/mp4")}, timeout=35)
+        requests.post(url, data=data, files={"video": ("motion_story.mp4", bio, "video/mp4")}, timeout=45)
     except Exception as e:
         print("Send video error:", e)
 
@@ -1110,7 +1460,6 @@ def register_and_check_match(state, matches_mem, lg_key, match_id, league_fa, is
     target_chat = get_target_chat_id(state)
     footer = state.get("footer_text", "گزارش زنده و نتایج فوتبال")
 
-    # الف) گل جدید در لیگ برتر و جام حذفی ایران (با سیستم خودترمیم شونده مورد 5)
     if is_iran and is_live and (h_g > prev["h"] or a_g > prev["a"]):
         scorer = h_name if h_g > prev["h"] else a_name
         if target_chat:
@@ -1120,8 +1469,8 @@ def register_and_check_match(state, matches_mem, lg_key, match_id, league_fa, is
                 f"⚽ {h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}\n"
                 "🔄 (این پوستر با هر گل به صورت خودکار آپدیت می شود)"
             )
-            kb = [[{"text": "🎬 دریافت استوری ویدیویی متحرک (MP4)", "callback_data": f"mkvid_match_{match_id}"}]]
-            meta = {"type": "match", "mid": match_id, "overrides": {}, "caption": caption}
+            kb = [[{"text": "🎬 دریافت ویدیو موشن گرافیک (MP4)", "callback_data": f"mkvid_match_{match_id}"}]]
+            meta = {"type": "match", "mid": match_id, "overrides": {}, "caption": caption, "kb": kb}
 
             edited = False
             if prev.get("msg_id"):
@@ -1131,13 +1480,12 @@ def register_and_check_match(state, matches_mem, lg_key, match_id, league_fa, is
                 prev["msg_id"] = new_mid
         prev["h"], prev["a"] = h_g, a_g
 
-    # ب) پایان بازی برای تمام لیگ ها (اگر از قبل پست زنده داشت، همان پست را به نتیجه نهایی آپدیت کن!)
     if is_finished and not prev["ft"]:
         if target_chat:
             img = build_match_image(m_obj, footer_text=footer)
             caption = f"🏁 پایان بازی ({league_fa})\n⚽ {h_name} {to_fa_digits(h_g)} - {to_fa_digits(a_g)} {a_name}"
-            kb = [[{"text": "🎬 دریافت استوری ویدیویی متحرک (MP4)", "callback_data": f"mkvid_match_{match_id}"}]]
-            meta = {"type": "match", "mid": match_id, "overrides": {}, "caption": caption}
+            kb = [[{"text": "🎬 دریافت ویدیو موشن گرافیک (MP4)", "callback_data": f"mkvid_match_{match_id}"}]]
+            meta = {"type": "match", "mid": match_id, "overrides": {}, "caption": caption, "kb": kb}
 
             edited = False
             if prev.get("msg_id"):
@@ -1311,7 +1659,7 @@ def send_live_now_matches(chat_id, message_id=None):
         text = (
             "🔴 فهرست تمامی بازی های زنده در جریان امروز:\n\n"
             + "\n".join(live_lines)
-            + "\n\n👇 روی هر بازی زنده بزنید تا پوستر خودترمیم شونده (🔄) یا ویدیوی متحرک آن ارسال شود:"
+            + "\n\n👇 روی هر بازی زنده بزنید تا پوستر خودترمیم شونده (🔄) یا ویدیوی موشن گرافیک آن ارسال شود:"
         )
     else:
         text = (
@@ -1431,8 +1779,7 @@ def answer_callback(callback_id, text=""):
         pass
 
 
-def Rebuild_post_from_meta(meta, state):
-    """بازسازی تصویر بر اساس متادیتا و تغییرات ریپلای کاربر"""
+def rebuild_post_from_meta(meta, state):
     ptype = meta.get("type")
     overrides = meta.get("overrides", {})
     footer = state.get("footer_text", "گزارش زنده و نتایج فوتبال")
@@ -1458,9 +1805,6 @@ def Rebuild_post_from_meta(meta, state):
 
 
 def handle_reply_instant_edit(chat_id, reply_msg_id, user_text, state):
-    """
-    مورد 13: تصحیح و ویرایش درجای همان عکس در تلگرام با ریپلای زدن روی عکس
-    """
     key = f"{chat_id}_{reply_msg_id}"
     meta = SENT_POSTS_MEM.get(key)
     if not meta:
@@ -1487,7 +1831,7 @@ def handle_reply_instant_edit(chat_id, reply_msg_id, user_text, state):
         else:
             overrides["title"] = line
 
-    new_img = Rebuild_post_from_meta(meta, state)
+    new_img = rebuild_post_from_meta(meta, state)
     if new_img:
         kb = meta.get("kb")
         edit_telegram_photo_in_place(chat_id, reply_msg_id, new_img, caption=meta.get("caption", ""), inline_kb=kb, post_meta=meta)
@@ -1511,11 +1855,11 @@ def background_worker(state):
 
             if now_tehran.hour == morning_hour and state.get("last_morning_date") != today_gregorian and target_chat:
                 refresh_daily_data_cache()
-                kb_m = [[{"text": "🎬 دریافت نسخه ویدیویی متحرک (MP4)", "callback_data": "mkvid_morning_0"}]]
+                kb_m = [[{"text": "🎬 دریافت ویدیو موشن گرافیک (MP4)", "callback_data": "mkvid_morning_0"}]]
                 cap_m = "🌞 صبح بخیر | تقویم، اوقات شرعی، نبض بازار و تفال حافظ"
                 send_telegram_photo(target_chat, build_morning_image(), cap_m, inline_kb=kb_m, post_meta={"type": "morning", "overrides": {}, "caption": cap_m, "kb": kb_m})
 
-                kb_w = [[{"text": "🎬 دریافت نسخه ویدیویی متحرک (MP4)", "callback_data": "mkvid_weather_0"}]]
+                kb_w = [[{"text": "🎬 دریافت ویدیو موشن گرافیک (MP4)", "callback_data": "mkvid_weather_0"}]]
                 cap_w = "⛅ وضعیت آب و هوا و پیش بینی ۴ زمانه امروز"
                 send_telegram_photo(target_chat, build_weather_image(), cap_w, inline_kb=kb_w, post_meta={"type": "weather", "overrides": {}, "caption": cap_w, "kb": kb_w})
                 state["last_morning_date"] = today_gregorian
@@ -1529,7 +1873,6 @@ def background_worker(state):
 def handle_user_request(chat_id, text, state, reply_to_msg_id=None):
     t = text.strip()
 
-    # اگر کاربر روی یکی از عکس های ربات ریپلای زده است، همان عکس را درجا ویرایش کن (مورد 13)
     if reply_to_msg_id:
         if handle_reply_instant_edit(chat_id, reply_to_msg_id, t, state):
             return
@@ -1543,13 +1886,13 @@ def handle_user_request(chat_id, text, state, reply_to_msg_id=None):
 
     if "صبح بخیر" in t or t == "/morning":
         img = build_morning_image()
-        kb = [[{"text": "🎬 دریافت استوری ویدیویی متحرک (MP4)", "callback_data": "mkvid_morning_0"}]]
+        kb = [[{"text": "🎬 دریافت ویدیو موشن گرافیک (MP4)", "callback_data": "mkvid_morning_0"}]]
         cap = "🌞 صبح بخیر | تقویم، اوقات شرعی، نبض بازار و تفال حافظ\n💡 (برای تغییر هر متن، روی همین عکس Reply بزنید)"
         send_telegram_photo(chat_id, img, cap, inline_kb=kb, post_meta={"type": "morning", "overrides": {}, "caption": cap, "kb": kb})
 
     elif "وضعیت هوا" in t or "آب و هوا" in t or t == "/weather":
         img = build_weather_image()
-        kb = [[{"text": "🎬 دریافت استوری ویدیویی متحرک (MP4)", "callback_data": "mkvid_weather_0"}]]
+        kb = [[{"text": "🎬 دریافت ویدیو موشن گرافیک (MP4)", "callback_data": "mkvid_weather_0"}]]
         cap = "⛅ وضعیت لحظه ای آب و هوا و پیش بینی ۴ زمانه\n💡 (برای تغییر هر متن، روی همین عکس Reply بزنید)"
         send_telegram_photo(chat_id, img, cap, inline_kb=kb, post_meta={"type": "weather", "overrides": {}, "caption": cap, "kb": kb})
 
@@ -1591,11 +1934,10 @@ def handle_callback_query(chat_id, message_id, cb_id, data, state):
             )
             kb = [
                 [{"text": "🔄 بروزرسانی زنده همین پوستر", "callback_data": f"refresh_{mid}"}],
-                [{"text": "🎬 دریافت استوری ویدیویی متحرک (MP4)", "callback_data": f"mkvid_match_{mid}"}]
+                [{"text": "🎬 دریافت ویدیو موشن گرافیک (MP4)", "callback_data": f"mkvid_match_{mid}"}]
             ]
             meta = {"type": "match", "mid": mid, "overrides": {}, "caption": caption, "kb": kb}
             sent_id = send_telegram_photo(chat_id, img, caption=caption, inline_kb=kb, post_meta=meta)
-            # ثبت شناسه پیام برای آپدیت خودکار در صورت تغییر نتیجه (مورد 5)
             state.setdefault("matches", {}).setdefault(mid, {"h": m["h_g"], "a": m["a_g"], "ft": m["is_finished"]})["msg_id"] = sent_id
 
     elif data.startswith("refresh_"):
@@ -1613,7 +1955,7 @@ def handle_callback_query(chat_id, message_id, cb_id, data, state):
             )
             kb = [
                 [{"text": "🔄 بروزرسانی زنده همین پوستر", "callback_data": f"refresh_{mid}"}],
-                [{"text": "🎬 دریافت استوری ویدیویی متحرک (MP4)", "callback_data": f"mkvid_match_{mid}"}]
+                [{"text": "🎬 دریافت ویدیو موشن گرافیک (MP4)", "callback_data": f"mkvid_match_{mid}"}]
             ]
             meta["caption"] = caption
             meta["kb"] = kb
@@ -1626,7 +1968,7 @@ def handle_callback_query(chat_id, message_id, cb_id, data, state):
         if m:
             img = build_h2h_matchday_image(m, footer_text=footer)
             caption = f"⚔ پیش بازی و تقابل رو در رو ({m['league_fa']})\n⚽ {m['h_name']} مقابل {m['a_name']}"
-            kb = [[{"text": "🎬 دریافت استوری ویدیویی متحرک (MP4)", "callback_data": f"mkvid_h2h_{mid}"}]]
+            kb = [[{"text": "🎬 دریافت ویدیو موشن گرافیک (MP4)", "callback_data": f"mkvid_h2h_{mid}"}]]
             meta = {"type": "h2h", "mid": mid, "overrides": {}, "caption": caption, "kb": kb}
             send_telegram_photo(chat_id, img, caption=caption, inline_kb=kb, post_meta=meta)
 
@@ -1652,45 +1994,37 @@ def handle_callback_query(chat_id, message_id, cb_id, data, state):
         if selected:
             img = build_multi_match_image(selected, title_top=title_top, footer_text=footer)
             caption = f"📊 جمع بندی نتایج ({title_top})"
-            kb = [[{"text": "🎬 دریافت استوری ویدیویی متحرک (MP4)", "callback_data": "mkvid_multi_0"}]]
+            kb = [[{"text": "🎬 دریافت ویدیو موشن گرافیک (MP4)", "callback_data": "mkvid_multi_0"}]]
             meta = {"type": "multi", "mids": mids, "title_top": title_top, "overrides": {}, "caption": caption, "kb": kb}
             send_telegram_photo(chat_id, img, caption=caption, inline_kb=kb, post_meta=meta)
 
-    # مورد 3: ساخت و ارسال استوری ویدیویی متحرک MP4
+    # رندر استوری ویدیویی با موتور کارگردان هوشمند موشن گرافیک
     elif data.startswith("mkvid_"):
-        answer_callback(cb_id, "🎬 در حال رندر استوری ویدیویی متحرک (حدود ۵ ثانیه)...")
+        answer_callback(cb_id, "🎬 در حال کارگردانی و رندر ویدیوی موشن گرافیک (حدود ۵ ثانیه)...")
         key = f"{chat_id}_{message_id}"
         meta = SENT_POSTS_MEM.get(key)
+
+        ptype, m_obj, m_list, title_top, overrides = "morning", None, None, "نتایج بازی های امروز", {}
         if meta:
-            static_img = Rebuild_post_from_meta(meta, state)
-            ptype = meta.get("type")
+            ptype = meta.get("type", "morning")
+            overrides = meta.get("overrides", {})
+            if ptype in ("match", "h2h"):
+                m_obj = CACHE["matches_by_id"].get(meta.get("mid"))
+            elif ptype == "multi":
+                m_list = [CACHE["matches_by_id"][x] for x in meta.get("mids", []) if x in CACHE["matches_by_id"]]
+                title_top = meta.get("title_top", "نتایج بازی های امروز")
         else:
             parts = data.split("_", 2)
             ptype = parts[1]
             arg = parts[2] if len(parts) > 2 else ""
-            if ptype == "morning":
-                static_img = build_morning_image()
-            elif ptype == "weather":
-                static_img = build_weather_image()
-            elif ptype == "match" and arg in CACHE["matches_by_id"]:
-                static_img = build_match_image(CACHE["matches_by_id"][arg], footer_text=footer)
-            elif ptype == "h2h" and arg in CACHE["matches_by_id"]:
-                static_img = build_h2h_matchday_image(CACHE["matches_by_id"][arg], footer_text=footer)
-            else:
-                static_img = None
+            if ptype in ("match", "h2h") and arg in CACHE["matches_by_id"]:
+                m_obj = CACHE["matches_by_id"][arg]
 
-        if static_img:
-            w_code = CACHE["weather"].get("code", 0)
-            if ptype == "weather" and w_code in (51, 61, 63, 65, 80, 95):
-                anim_mode = "rain"
-            elif ptype in ("match", "h2h", "multi"):
-                anim_mode = "goal"
-            else:
-                anim_mode = "sparkle"
-
-            mp4_bytes = generate_animated_story_mp4(static_img, mode=anim_mode)
-            if mp4_bytes:
-                send_telegram_video(chat_id, mp4_bytes, caption="🎬 نسخه استوری ویدیویی متحرک (آماده انتشار در استوری)")
+        mp4_bytes = generate_scenario_video_mp4(
+            ptype, state, m_obj=m_obj, matches_list=m_list, title_top=title_top, overrides=overrides
+        )
+        if mp4_bytes:
+            send_telegram_video(chat_id, mp4_bytes, caption="🎬 نسخه استوری موشن گرافیک (۱۰۸۰×۱۹۲۰ آماده استوری)")
 
     elif data == "set_footer":
         answer_callback(cb_id)
